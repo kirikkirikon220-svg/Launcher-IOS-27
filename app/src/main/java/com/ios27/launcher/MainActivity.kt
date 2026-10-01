@@ -1381,25 +1381,17 @@ class MainActivity : Activity() {
                         return true
                     }
 
-                    if (dy > dp(100f)) {
-
-                        searchMode = true
-
-                        pressedIndex = -1
-
-                        invalidate()
-
-                        return true
-                    }
-
                     if (
-                        dy < -dp(100f) &&
-                        downX > width * 0.50f
+                        downY < dp(80f) &&
+                        downX > width * 0.50f &&
+                        dy > dp(80f)
                     ) {
 
                         controlCenter = true
 
                         pressedIndex = -1
+
+                        pageOffset = 0f
 
                         invalidate()
 
@@ -1521,11 +1513,12 @@ class MainActivity : Activity() {
             y: Float
         ): Int {
 
+            // EXACTLY the same geometry as drawHome().
             val top =
-                dp(65f)
+                dp(72f)
 
             val bottom =
-                height - dp(128f)
+                height - dp(190f)
 
             if (y < top || y > bottom)
                 return -1
