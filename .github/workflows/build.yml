@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -31,8 +31,10 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Launcher-IOS-27-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+
+          gh release create "$TAG"             app/build/outputs/apk/debug/app-debug.apk             --repo "${{ github.repository }}"             --title "Launcher APK ${{ github.run_number }}"             --notes "Automatic APK build from commit ${{ github.sha }}"
