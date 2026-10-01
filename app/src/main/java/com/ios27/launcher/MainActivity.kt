@@ -39,13 +39,13 @@ class MainActivity : Activity() {
         if (::launcherView.isInitialized) launcherView.reloadApps()
     }
 
-    inner class LauncherView(context: Context) : View(context) {
+    private data class AppItem(
+        val label: String,
+        val packageName: String,
+        val icon: Drawable
+    )
 
-        private data class AppItem(
-            val label: String,
-            val packageName: String,
-            val icon: Drawable
-        )
+    inner class LauncherView(context: Context) : View(context) {
 
         private val pm = packageManager
         private val apps = mutableListOf<AppItem>()
