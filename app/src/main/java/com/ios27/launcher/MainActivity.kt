@@ -229,8 +229,6 @@ class MainActivity : Activity() {
                 return
             }
 
-            drawStatusBar(canvas)
-
             drawHome(canvas)
 
             if (controlCenter) {
@@ -382,19 +380,6 @@ class MainActivity : Activity() {
                 textPaint
             )
 
-            textPaint.textAlign =
-                Paint.Align.RIGHT
-
-            textPaint.textSize =
-                dp(13f)
-
-            canvas.drawText(
-                "▮▮▮  Wi-Fi  ▰",
-                width - dp(18f),
-                dp(31f),
-                textPaint
-            )
-
             textPaint.alpha = 255
 
             textPaint.textAlign =
@@ -409,11 +394,13 @@ class MainActivity : Activity() {
             canvas: Canvas
         ) {
 
+            // iOS-like Home Screen spacing.
+            // Leave room for Search and the translucent Dock.
             val top =
-                dp(65f)
+                dp(72f)
 
             val bottom =
-                height - dp(128f)
+                height - dp(190f)
 
             val availableHeight =
                 bottom - top
@@ -485,10 +472,14 @@ class MainActivity : Activity() {
                 )
             }
 
-            drawPageDots(
-                canvas,
-                bottom - dp(14f)
-            )
+            if (maxPage() > 0) {
+                drawPageDots(
+                    canvas,
+                    height - dp(160f)
+                )
+            }
+
+            drawSearchPill(canvas)
 
             drawDock(canvas)
         }
@@ -578,7 +569,7 @@ class MainActivity : Activity() {
         ) {
 
             val size =
-                dp(61f)
+                dp(59f)
 
             val left =
                 cx - size / 2f
@@ -586,26 +577,8 @@ class MainActivity : Activity() {
             val top =
                 cy - size / 2f
 
-            // subtle shadow
-
-            shadowPaint.color =
-                Color.argb(
-                    75,
-                    0,
-                    0,
-                    0
-                )
-
-            canvas.drawRoundRect(
-                left + dp(1f),
-                top + dp(2f),
-                left + size + dp(1f),
-                top + size + dp(2f),
-                dp(15f),
-                dp(15f),
-                shadowPaint
-            )
-
+            // No artificial gray square behind the icon.
+            // iOS-style depth comes from the icon itself.
             app.icon.setBounds(
                 left.toInt(),
                 top.toInt(),
@@ -667,16 +640,15 @@ class MainActivity : Activity() {
                 dp(12f)
 
             val dockHeight =
-                dp(87f)
+                dp(82f)
 
             val top =
-                height - dp(108f)
+                height - dp(103f)
 
-            // outer shadow
-
+            // Soft depth under the glass.
             shadowPaint.color =
                 Color.argb(
-                    80,
+                    45,
                     0,
                     0,
                     0
@@ -684,19 +656,18 @@ class MainActivity : Activity() {
 
             canvas.drawRoundRect(
                 margin,
-                top + dp(3f),
+                top + dp(2f),
                 width - margin,
-                top + dockHeight + dp(3f),
-                dp(29f),
-                dp(29f),
+                top + dockHeight + dp(2f),
+                dp(27f),
+                dp(27f),
                 shadowPaint
             )
 
-            // glass
-
+            // Main Liquid Glass surface.
             glassPaint.color =
                 Color.argb(
-                    92,
+                    82,
                     255,
                     255,
                     255
@@ -707,43 +678,42 @@ class MainActivity : Activity() {
                 top,
                 width - margin,
                 top + dockHeight,
-                dp(29f),
-                dp(29f),
+                dp(27f),
+                dp(27f),
                 glassPaint
             )
 
-            // inner highlight
-
+            // Very subtle inner glass highlight.
             glassPaint.color =
                 Color.argb(
-                    38,
+                    24,
                     255,
                     255,
                     255
                 )
 
             canvas.drawRoundRect(
-                margin + dp(2f),
-                top + dp(2f),
-                width - margin - dp(2f),
-                top + dockHeight - dp(2f),
-                dp(27f),
-                dp(27f),
+                margin + dp(1.5f),
+                top + dp(1.5f),
+                width - margin - dp(1.5f),
+                top + dockHeight - dp(1.5f),
+                dp(25f),
+                dp(25f),
                 glassPaint
             )
 
             val dockApps =
-                apps.take(4)
+                getDockApps()
 
             val slot =
-                (width - dp(30f)) / 4f
+                (width - dp(24f)) / 4f
 
             dockApps.forEachIndexed {
                 index,
                 app ->
 
                 val cx =
-                    dp(15f) +
+                    dp(12f) +
                     slot * index +
                     slot / 2f
 
@@ -766,6 +736,186 @@ class MainActivity : Activity() {
 
                 app.icon.draw(canvas)
             }
+        }
+
+        private fun getDockApps(): List<AppItem> {
+
+            val preferredPackages =
+                listOf(
+                    // Phone
+                    listOf(
+                        "com.google.android.dialer",
+                        "com.samsung.android.dialer",
+                        "com.android.dialer"
+                    ),
+
+                    // Browser
+                    listOf(
+                        "com.android.chrome",
+                        "com.sec.android.app.sbrowser",
+                        "com.google.android.googlequicksearchbox"
+                    ),
+
+                    // Messages
+                    listOf(
+                        "com.google.android.apps.messaging",
+                        "com.samsung.android.messaging",
+                        "com.android.mms"
+                    ),
+
+                    // Music
+                    listOf(
+                        "com.google.android.apps.youtube.music",
+                        "com.samsung.android.app.music",
+                        "com.spotify.music"
+                    )
+                )
+
+            val result =
+                mutableListOf<AppItem>()
+
+            for (group in preferredPackages) {
+
+                val found =
+                    apps.firstOrNull {
+                        it.packageName in group &&
+                        result.none { selected ->
+                            selected.packageName ==
+                                it.packageName
+                        }
+                    }
+
+                if (found != null) {
+                    result.add(found)
+                }
+            }
+
+            // Fill missing Dock slots with remaining apps.
+            for (app in apps) {
+
+                if (result.size >= 4)
+                    break
+
+                if (
+                    result.none {
+                        it.packageName ==
+                            app.packageName
+                    }
+                ) {
+                    result.add(app)
+                }
+            }
+
+            return result.take(4)
+        }
+
+        private fun drawSearchPill(
+            canvas: Canvas
+        ) {
+
+            val pillWidth =
+                dp(92f)
+
+            val pillHeight =
+                dp(32f)
+
+            val left =
+                width / 2f -
+                    pillWidth / 2f
+
+            val top =
+                height - dp(149f)
+
+            val right =
+                left + pillWidth
+
+            val bottom =
+                top + pillHeight
+
+            // Liquid Glass search surface.
+            glassPaint.color =
+                Color.argb(
+                    82,
+                    255,
+                    255,
+                    255
+                )
+
+            canvas.drawRoundRect(
+                left,
+                top,
+                right,
+                bottom,
+                dp(17f),
+                dp(17f),
+                glassPaint
+            )
+
+            // Search symbol.
+            paint.color =
+                Color.argb(
+                    220,
+                    255,
+                    255,
+                    255
+                )
+
+            paint.style =
+                Paint.Style.STROKE
+
+            paint.strokeWidth =
+                dp(1.7f)
+
+            val iconCx =
+                left + dp(20f)
+
+            val iconCy =
+                top + pillHeight / 2f
+
+            canvas.drawCircle(
+                iconCx,
+                iconCy - dp(1f),
+                dp(5f),
+                paint
+            )
+
+            canvas.drawLine(
+                iconCx + dp(3.5f),
+                iconCy + dp(3f),
+                iconCx + dp(7f),
+                iconCy + dp(6.5f),
+                paint
+            )
+
+            paint.style =
+                Paint.Style.FILL
+
+            textPaint.color =
+                Color.WHITE
+
+            textPaint.alpha =
+                (220 * homeAlpha).toInt()
+
+            textPaint.textSize =
+                dp(12.5f)
+
+            textPaint.textAlign =
+                Paint.Align.LEFT
+
+            textPaint.typeface =
+                Typeface.create(
+                    "sans",
+                    Typeface.NORMAL
+                )
+
+            canvas.drawText(
+                "Поиск",
+                left + dp(31f),
+                top + dp(21f),
+                textPaint
+            )
+
+            textPaint.alpha = 255
         }
 
         // -----------------------------------------
@@ -1199,6 +1349,34 @@ class MainActivity : Activity() {
                         }
 
                         pressedIndex = -1
+
+                        return true
+                    }
+
+                    val searchTop =
+                        height - dp(149f)
+
+                    val searchBottom =
+                        height - dp(117f)
+
+                    val searchLeft =
+                        width / 2f - dp(46f)
+
+                    val searchRight =
+                        width / 2f + dp(46f)
+
+                    if (
+                        event.x >= searchLeft &&
+                        event.x <= searchRight &&
+                        event.y >= searchTop &&
+                        event.y <= searchBottom
+                    ) {
+
+                        searchMode = true
+
+                        pressedIndex = -1
+
+                        invalidate()
 
                         return true
                     }
