@@ -444,32 +444,40 @@ class MainActivity : Activity() {
                         0
                     )
 
+            /*
+             * Both pages move together during the swipe.
+             * This prevents the current page from looking stuck.
+             */
+
+            val currentOffset =
+                -pageOffset * width.toFloat()
+
             drawPage(
                 canvas,
                 currentPage,
-                0f,
+                currentOffset,
                 top,
                 bottom,
                 cellW,
                 cellH
             )
 
-            if (pageOffset != 0f &&
+            if (
+                pageOffset != 0f &&
                 nextPage != currentPage
             ) {
 
-                val direction =
-                    if (pageOffset > 0f)
-                        -1f
-                    else
-                        1f
+                val neighbourOffset =
+                    if (pageOffset > 0f) {
+                        width.toFloat() + currentOffset
+                    } else {
+                        -width.toFloat() + currentOffset
+                    }
 
                 drawPage(
                     canvas,
                     nextPage,
-                    direction *
-                        width *
-                        abs(pageOffset),
+                    neighbourOffset,
                     top,
                     bottom,
                     cellW,
