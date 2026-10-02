@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.graphics.drawable.Drawable
+import android.os.BatteryManager
 import android.os.Bundle
 import android.view.*
 import android.view.animation.DecelerateInterpolator
@@ -245,6 +246,444 @@ class MainActivity : Activity() {
         // true  = progress напрямую следует за пальцем.
         // false = используется самостоятельная settle-анимация.
         private var controlCenterInteractive = false
+
+        // =================================================
+        // IOS27_STATUS_BAR_LIQUID_V8_FIXED
+        // =================================================
+        //
+        // Интерактивная переходная зона:
+        //
+        // 0.00 -> 0.35
+        // статусные индикаторы начинают двигаться
+        //
+        // 0.35 -> 0.55
+        // появляется первый блок Control Center
+        //
+        // 0.45 -> 0.66
+        // появляется media
+        //
+        // 0.54 -> 0.76
+        // появляются слайдеры
+        //
+        // 0.64 -> 0.88
+        // появляются нижние элементы
+        //
+        // Вся анимация напрямую связана
+        // с controlCenterProgress.
+
+        private fun ccReveal(
+            value: Float,
+            start: Float,
+            end: Float
+        ): Float {
+
+            if (value <= start)
+                return 0f
+
+            if (value >= end)
+                return 1f
+
+            return (
+                (value - start) /
+                (end - start)
+            ).coerceIn(0f, 1f)
+        }
+
+        private fun drawCCReveal(
+            canvas: Canvas,
+            progress: Float,
+            travel: Float,
+            block: () -> Unit
+        ) {
+
+            val p =
+                progress.coerceIn(
+                    0f,
+                    1f
+                )
+
+            if (p <= 0f)
+                return
+
+            canvas.save()
+
+            canvas.translate(
+                0f,
+                travel * (1f - p)
+            )
+
+            val save =
+                canvas.saveLayerAlpha(
+                    0f,
+                    0f,
+                    width.toFloat(),
+                    height.toFloat(),
+                    (255f * p)
+                        .toInt()
+                        .coerceIn(0, 255)
+                )
+
+            block()
+
+            canvas.restoreToCount(save)
+
+            canvas.restore()
+        }
+
+        private fun drawIOSStatusIndicators(
+            canvas: Canvas
+        ) {
+
+            val p =
+                controlCenterProgress
+                    .coerceIn(0f, 1f)
+
+            // Первые ~2 см движения:
+            // индикаторы уходят,
+            // а Control Center ещё не полностью виден.
+
+            val leftProgress =
+                ccReveal(
+                    p,
+                    0.00f,
+                    0.34f
+                )
+
+            val rightProgress =
+                ccReveal(
+                    p,
+                    0.02f,
+                    0.38f
+                )
+
+            val leftAlpha =
+                (
+                    1f -
+                    leftProgress
+                )
+
+            val rightAlpha =
+                (
+                    1f -
+                    rightProgress
+                )
+
+            val time =
+                SimpleDateFormat(
+                    "HH:mm",
+                    Locale.getDefault()
+                ).format(Date())
+
+            // =============================================
+            // LEFT — TIME
+            // =============================================
+
+            if (leftAlpha > 0f) {
+
+                textPaint.color =
+                    Color.WHITE
+
+                textPaint.alpha =
+                    (
+                        255f *
+                        leftAlpha *
+                        homeAlpha.coerceAtLeast(0.85f)
+                    )
+                        .toInt()
+                        .coerceIn(0, 255)
+
+                textPaint.textSize =
+                    dp(15f)
+
+                textPaint.typeface =
+                    Typeface.create(
+                        "sans",
+                        Typeface.BOLD
+                    )
+
+                textPaint.textAlign =
+                    Paint.Align.LEFT
+
+                canvas.save()
+
+                canvas.translate(
+                    -dp(8f) *
+                        leftProgress,
+                    -dp(7f) *
+                        leftProgress
+                )
+
+                canvas.drawText(
+                    time,
+                    dp(22f),
+                    dp(31f),
+                    textPaint
+                )
+
+                canvas.restore()
+            }
+
+            // =============================================
+            // RIGHT — SIGNAL / WIFI / BATTERY
+            // =============================================
+
+            if (rightAlpha > 0f) {
+
+                textPaint.color =
+                    Color.WHITE
+
+                textPaint.alpha =
+                    (
+                        255f *
+                        rightAlpha
+                    )
+                        .toInt()
+                        .coerceIn(0, 255)
+
+                val batteryManager =
+                    context.getSystemService(
+                        Context.BATTERY_SERVICE
+                    ) as? BatteryManager
+
+                val battery =
+                    batteryManager
+                        ?.getIntProperty(
+                            BatteryManager
+                                .BATTERY_PROPERTY_CAPACITY
+                        )
+                        ?.coerceIn(
+                            0,
+                            100
+                        )
+                        ?: 100
+
+                val groupY =
+                    dp(25f) +
+                    dp(13f) *
+                    rightProgress
+
+                canvas.save()
+
+                canvas.translate(
+                    dp(7f) *
+                        rightProgress,
+                    0f
+                )
+
+                // -----------------------------------------
+                // BATTERY
+                // -----------------------------------------
+
+                val batteryRight =
+                    width -
+                    dp(16f)
+
+                val batteryLeft =
+                    batteryRight -
+                    dp(24f)
+
+                val batteryTop =
+                    groupY -
+                    dp(6f)
+
+                bgPaint.shader = null
+                bgPaint.style =
+                    Paint.Style.STROKE
+
+                bgPaint.strokeWidth =
+                    dp(1.5f)
+
+                bgPaint.color =
+                    Color.WHITE
+
+                bgPaint.alpha =
+                    textPaint.alpha
+
+                canvas.drawRoundRect(
+                    batteryLeft,
+                    batteryTop,
+                    batteryRight,
+                    batteryTop +
+                        dp(12f),
+                    dp(3f),
+                    dp(3f),
+                    bgPaint
+                )
+
+                bgPaint.style =
+                    Paint.Style.FILL
+
+                canvas.drawRoundRect(
+                    batteryLeft +
+                        dp(2f),
+                    batteryTop +
+                        dp(2f),
+                    batteryLeft +
+                        dp(2f) +
+                        (
+                            dp(20f) *
+                            battery /
+                            100f
+                        ),
+                    batteryTop +
+                        dp(10f),
+                    dp(2f),
+                    dp(2f),
+                    bgPaint
+                )
+
+                canvas.drawRoundRect(
+                    batteryRight,
+                    batteryTop +
+                        dp(3.5f),
+                    batteryRight +
+                        dp(2f),
+                    batteryTop +
+                        dp(8.5f),
+                    dp(1f),
+                    dp(1f),
+                    bgPaint
+                )
+
+                // -----------------------------------------
+                // BATTERY %
+                // -----------------------------------------
+
+                textPaint.textAlign =
+                    Paint.Align.RIGHT
+
+                textPaint.textSize =
+                    dp(10f)
+
+                textPaint.typeface =
+                    Typeface.DEFAULT_BOLD
+
+                canvas.drawText(
+                    "$battery%",
+                    batteryLeft -
+                        dp(5f),
+                    groupY +
+                        dp(3.5f),
+                    textPaint
+                )
+
+                // -----------------------------------------
+                // WIFI
+                // -----------------------------------------
+
+                val wifiCx =
+                    batteryLeft -
+                    dp(34f)
+
+                bgPaint.style =
+                    Paint.Style.STROKE
+
+                bgPaint.strokeWidth =
+                    dp(1.7f)
+
+                bgPaint.strokeCap =
+                    Paint.Cap.ROUND
+
+                bgPaint.color =
+                    Color.WHITE
+
+                bgPaint.alpha =
+                    textPaint.alpha
+
+                canvas.drawArc(
+                    RectF(
+                        wifiCx -
+                            dp(9f),
+                        groupY -
+                            dp(7f),
+                        wifiCx +
+                            dp(9f),
+                        groupY +
+                            dp(9f)
+                    ),
+                    225f,
+                    90f,
+                    false,
+                    bgPaint
+                )
+
+                canvas.drawArc(
+                    RectF(
+                        wifiCx -
+                            dp(6f),
+                        groupY -
+                            dp(4f),
+                        wifiCx +
+                            dp(6f),
+                        groupY +
+                            dp(8f)
+                    ),
+                    225f,
+                    90f,
+                    false,
+                    bgPaint
+                )
+
+                bgPaint.style =
+                    Paint.Style.FILL
+
+                canvas.drawCircle(
+                    wifiCx,
+                    groupY +
+                        dp(4f),
+                    dp(1.8f),
+                    bgPaint
+                )
+
+                // -----------------------------------------
+                // MOBILE SIGNAL
+                // -----------------------------------------
+
+                val signalRight =
+                    wifiCx -
+                    dp(19f)
+
+                bgPaint.color =
+                    Color.WHITE
+
+                for (i in 0 until 4) {
+
+                    val barHeight =
+                        dp(
+                            3f +
+                            i * 2.5f
+                        )
+
+                    val x =
+                        signalRight -
+                        dp(4f) *
+                        (3 - i)
+
+                    canvas.drawRoundRect(
+                        x,
+                        groupY -
+                            barHeight,
+                        x +
+                            dp(3f),
+                        groupY,
+                        dp(1.3f),
+                        dp(1.3f),
+                        bgPaint
+                    )
+                }
+
+                canvas.restore()
+            }
+
+            textPaint.alpha = 255
+            textPaint.textAlign =
+                Paint.Align.LEFT
+
+            bgPaint.alpha = 255
+            bgPaint.style =
+                Paint.Style.FILL
+        }
+
         private var searchMode = false
         private var editMode = false
 
@@ -389,6 +828,11 @@ class MainActivity : Activity() {
             super.onDraw(canvas)
 
             drawWallpaper(canvas)
+
+            // IOS27_STATUS_BAR_LIQUID_V8_FIXED
+            // Верхние индикаторы являются частью
+            // интерактивного перехода в Control Center.
+            drawIOSStatusIndicators(canvas)
 
             if (searchMode) {
 
@@ -1303,6 +1747,21 @@ class MainActivity : Activity() {
                 (1f - p)
             }
 
+        // IOS27_STATUS_BAR_LIQUID_V8_FIXED
+        //
+        // Первые ~2 см свайпа используются
+        // для перехода статусной области.
+        //
+        // После этого Control Center
+        // начинает materialize.
+
+        val panelEased =
+            ccReveal(
+                eased,
+                0.34f,
+                0.96f
+            )
+
         // -----------------------------------------
         // BACKDROP
         // -----------------------------------------
@@ -1369,14 +1828,14 @@ class MainActivity : Activity() {
 
         val slideY =
             -panelHeight *
-            (1f - eased)
+            (1f - panelEased)
 
         val scale =
             0.965f +
-            0.035f * eased
+            0.035f * panelEased
 
         val panelAlpha =
-            (255f * eased)
+            (255f * panelEased)
                 .toInt()
                 .coerceIn(0, 255)
 
@@ -1407,6 +1866,19 @@ class MainActivity : Activity() {
         // -----------------------------------------
         // CONNECTIVITY GLASS
         // -----------------------------------------
+
+        val connectivityProgress =
+            ccReveal(
+                eased,
+                0.34f,
+                0.54f
+            )
+
+        drawCCReveal(
+            canvas,
+            connectivityProgress,
+            dp(24f)
+        ) {
 
         glassPaint.style =
             Paint.Style.FILL
@@ -1483,9 +1955,24 @@ class MainActivity : Activity() {
             false
         )
 
+        }
+
         // -----------------------------------------
         // MEDIA GLASS
         // -----------------------------------------
+
+        val mediaProgress =
+            ccReveal(
+                eased,
+                0.43f,
+                0.64f
+            )
+
+        drawCCReveal(
+            canvas,
+            mediaProgress,
+            dp(26f)
+        ) {
 
         val mediaLeft =
             margin +
@@ -1587,9 +2074,24 @@ class MainActivity : Activity() {
             false
         )
 
+        }
+
         // -----------------------------------------
         // SLIDERS
         // -----------------------------------------
+
+        val slidersProgress =
+            ccReveal(
+                eased,
+                0.52f,
+                0.74f
+            )
+
+        drawCCReveal(
+            canvas,
+            slidersProgress,
+            dp(30f)
+        ) {
 
         val sliderY =
             top +
@@ -1616,9 +2118,24 @@ class MainActivity : Activity() {
             "♪"
         )
 
+        }
+
         // -----------------------------------------
         // BOTTOM CONTROLS
         // -----------------------------------------
+
+        val bottomProgress =
+            ccReveal(
+                eased,
+                0.62f,
+                0.88f
+            )
+
+        drawCCReveal(
+            canvas,
+            bottomProgress,
+            dp(34f)
+        ) {
 
         val smallY =
             bottomControlsTop
@@ -1665,6 +2182,8 @@ class MainActivity : Activity() {
             smallWidth,
             "+"
         )
+
+        }
 
         textPaint.alpha = 255
 
