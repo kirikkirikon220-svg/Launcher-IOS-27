@@ -399,10 +399,10 @@ class MainActivity : Activity() {
             // iOS-like Home Screen spacing.
             // Leave room for Search and the translucent Dock.
             val top =
-                dp(72f)
+                dp(67f)
 
             val bottom =
-                height - dp(190f)
+                height - dp(184f)
 
             val availableHeight =
                 bottom - top
@@ -683,9 +683,7 @@ class MainActivity : Activity() {
                     canvas,
                     apps[i],
                     cx,
-                    cy,
-                    1f,
-                    true
+                    cy
                 )
             }
         }
@@ -1803,10 +1801,10 @@ class MainActivity : Activity() {
 
             // EXACTLY the same geometry as drawHome().
             val top =
-                dp(72f)
+                dp(67f)
 
             val bottom =
-                height - dp(190f)
+                height - dp(184f)
 
             if (y < top || y > bottom)
                 return -1
@@ -1845,6 +1843,34 @@ class MainActivity : Activity() {
                 index
             else
                 -1
+        }
+
+        private fun launchApp(index: Int) {
+
+            if (index !in apps.indices) {
+                return
+            }
+
+            val app = apps[index]
+
+            try {
+
+                val launch =
+                    pm.getLaunchIntentForPackage(
+                        app.packageName
+                    )
+
+                if (launch != null) {
+
+                    launch.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+                    )
+
+                    startActivity(launch)
+                }
+
+            } catch (_: Exception) {
+            }
         }
 
         private fun openAppAt(
