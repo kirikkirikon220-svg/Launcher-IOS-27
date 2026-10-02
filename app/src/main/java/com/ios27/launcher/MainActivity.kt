@@ -18,6 +18,11 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+// IOS27_CONTROL_CENTER_ANIMATION_V11
+// Основано на покадровом анализе референсной записи.
+// Статусная правая группа фиксирована.
+// Время только fade.
+// Control Center materialize идёт каскадом.
 class MainActivity : Activity() {
 
     private lateinit var launcherView: LauncherView
@@ -311,9 +316,15 @@ class MainActivity : Activity() {
             // Materialize не ограничивается alpha:
             // блок одновременно приезжает и слегка масштабируется.
 
+            // IOS27_CONTROL_CENTER_BLOCK_SCALE_V11
+            //
+            // Основное масштабирование выполняет сама панель.
+            // Отдельные блоки получают только очень лёгкий
+            // materialize-scale, как в записи.
+
             val revealScale =
-                0.965f +
-                0.035f * p
+                0.985f +
+                0.015f * p
 
             canvas.translate(
                 width / 2f,
@@ -374,13 +385,6 @@ class MainActivity : Activity() {
                     0.34f
                 )
 
-            val rightProgress =
-                ccReveal(
-                    p,
-                    0.02f,
-                    0.38f
-                )
-
             val leftAlpha =
                 (
                     1f -
@@ -430,29 +434,12 @@ class MainActivity : Activity() {
                 textPaint.textAlign =
                     Paint.Align.LEFT
 
-                canvas.save()
-
-                // Левая группа схлопывается:
-                // движение влево + уменьшение + fade.
-
-                canvas.translate(
-                    -dp(8f) *
-                        leftProgress,
-                    -dp(7f) *
-                        leftProgress
-                )
-
-                val leftScale =
-                    1f -
-                    0.08f *
-                    leftProgress
-
-                canvas.scale(
-                    leftScale,
-                    leftScale,
-                    dp(22f),
-                    dp(31f)
-                )
+                // IOS27_STATUS_BAR_TIME_FADE_V11
+                //
+                // Время физически не двигается.
+                // Оно остаётся в одной координате
+                // и только постепенно исчезает
+                // вместе с раскрытием Control Center.
 
                 canvas.drawText(
                     time,
@@ -460,8 +447,6 @@ class MainActivity : Activity() {
                     dp(31f),
                     textPaint
                 )
-
-                canvas.restore()
             }
 
             // =============================================
@@ -498,21 +483,20 @@ class MainActivity : Activity() {
                         )
                         ?: 100
 
-                // Правая группа остаётся на экране,
-                // но слегка участвует в morph-переходе.
+                // IOS27_STATUS_BAR_RIGHT_FIXED_V11
+                //
+                // Wi-Fi / сеть / батарея:
+                // строго фиксированная позиция.
+                // Никакого translate.
+                // Никакого вертикального смещения.
+                // Никакого fade.
+                //
+                // Эта группа остаётся физически
+                // на одном месте на протяжении
+                // всего жеста.
 
                 val groupY =
-                    dp(25f) +
-                    dp(2f) *
-                    rightProgress
-
-                canvas.save()
-
-                canvas.translate(
-                    dp(3f) *
-                        rightProgress,
-                    0f
-                )
+                    dp(25f)
 
                 // -----------------------------------------
                 // BATTERY
@@ -716,7 +700,6 @@ class MainActivity : Activity() {
                     )
                 }
 
-                canvas.restore()
             }
 
             textPaint.alpha = 255
@@ -1814,9 +1797,16 @@ class MainActivity : Activity() {
         // BACKDROP
         // -----------------------------------------
 
+        // IOS27_CONTROL_CENTER_BACKDROP_V11
+        //
+        // Home Screen затемняется ещё до появления
+        // основной панели. Это соответствует записи:
+        // сначала исчезает яркость Home,
+        // затем materialize сам Control Center.
+
         bgPaint.color =
             Color.argb(
-                (105f * eased).toInt(),
+                (115f * eased).toInt(),
                 0,
                 0,
                 0
@@ -2472,7 +2462,8 @@ class MainActivity : Activity() {
                 // iOS-like settle:
                 // быстрое движение в начале +
                 // мягкое замедление в конце.
-                duration = 420L
+                // Быстрый iOS-like settle после отпускания.
+                duration = 280L
 
                 interpolator =
                     PathInterpolator(
@@ -2513,7 +2504,9 @@ class MainActivity : Activity() {
                 0f
             ).apply {
 
-                duration = 300L
+                // Закрытие быстрее раскрытия:
+                // панель быстро возвращается к Home Screen.
+                duration = 220L
 
                 interpolator =
                     PathInterpolator(
