@@ -696,11 +696,19 @@ class MainActivity : Activity() {
             cellH: Float
         ) {
 
+            // IOS27_PAGE_CRASH_FIX_V2
+            // Никогда не позволяем странице выйти за диапазон.
+            val safePage =
+                targetPage.coerceIn(
+                    0,
+                    maxPage()
+                )
+
             val perPage =
                 columns * rows
 
             val start =
-                targetPage * perPage
+                safePage * perPage
 
             val end =
                 min(
@@ -1922,16 +1930,29 @@ class MainActivity : Activity() {
             target: Int
         ) {
 
+            // IOS27_PAGE_CRASH_FIX_V2
+            // Не разрешаем свайпнуть дальше первой/последней страницы.
+            val safeTarget =
+                target.coerceIn(
+                    0,
+                    maxPage()
+                )
+
+            // Если уже на нужной странице — ничего не запускаем.
+            if (safeTarget == page) {
+                pageOffset = 0f
+                invalidate()
+                return
+            }
+
             val start =
                 pageOffset
 
             val direction =
-                if (target > page)
+                if (safeTarget > page)
                     1f
-                else if (target < page)
-                    -1f
                 else
-                    0f
+                    -1f
 
             ValueAnimator
                 .ofFloat(
@@ -1946,7 +1967,6 @@ class MainActivity : Activity() {
                         DecelerateInterpolator()
 
                     addUpdateListener {
-
                         pageOffset =
                             it.animatedValue
                                 as Float
@@ -1968,7 +1988,7 @@ class MainActivity : Activity() {
                                 android.animation.Animator
                             ) {
 
-                                page = target
+                                page = safeTarget
                                 pageOffset = 0f
 
                                 invalidate()
