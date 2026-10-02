@@ -23,6 +23,139 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // LAUNCHER_CRASH_HANDLER_V1
+        // Сохраняем необработанные исключения прямо на Android,
+        // чтобы можно было определить точную причину краша.
+        val previousCrashHandler =
+            Thread.getDefaultUncaughtExceptionHandler()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+
+            try {
+                val time =
+                    java.text.SimpleDateFormat(
+                        "yyyy-MM-dd HH:mm:ss",
+                        java.util.Locale.getDefault()
+                    ).format(java.util.Date())
+
+                val report = buildString {
+                    appendLine("iOS 27 Launcher crash report")
+                    appendLine("Time: $time")
+                    appendLine("Thread: ${thread.name}")
+                    appendLine("Android: ${android.os.Build.VERSION.RELEASE}")
+                    appendLine("SDK: ${android.os.Build.VERSION.SDK_INT}")
+                    appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                    appendLine()
+                    appendLine("Exception:")
+                    throwable.printStackTrace(
+                        java.io.PrintWriter(
+                            java.io.StringWriter()
+                        )
+                    )
+
+                    val sw = java.io.StringWriter()
+                    throwable.printStackTrace(
+                        java.io.PrintWriter(sw)
+                    )
+                    appendLine(sw.toString())
+                }
+
+                // 1. Надёжное место внутри внешнего хранилища приложения.
+                try {
+                    val dir =
+                        getExternalFilesDir(
+                            android.os.Environment.DIRECTORY_DOCUMENTS
+                        )
+
+                    if (dir != null) {
+                        dir.mkdirs()
+
+                        java.io.File(
+                            dir,
+                            "launcher_crash.txt"
+                        ).writeText(
+                            report,
+                            Charsets.UTF_8
+                        )
+                    }
+                } catch (_: Throwable) {
+                }
+
+                // 2. Копия непосредственно в "Загрузки"
+                // через MediaStore — без запроса storage permission
+                // на Android 10/11+.
+                if (
+                    android.os.Build.VERSION.SDK_INT >=
+                    android.os.Build.VERSION_CODES.Q
+                ) {
+                    try {
+                        val values =
+                            android.content.ContentValues().apply {
+                                put(
+                                    android.provider.MediaStore.Downloads.DISPLAY_NAME,
+                                    "launcher_crash_${System.currentTimeMillis()}.txt"
+                                )
+                                put(
+                                    android.provider.MediaStore.Downloads.MIME_TYPE,
+                                    "text/plain"
+                                )
+                                put(
+                                    android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                                    android.os.Environment.DIRECTORY_DOWNLOADS
+                                )
+                            }
+
+                        val resolver = contentResolver
+
+                        val uri =
+                            resolver.insert(
+                                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                values
+                            )
+
+                        if (uri != null) {
+                            resolver.openOutputStream(uri)?.use {
+                                it.write(
+                                    report.toByteArray(
+                                        Charsets.UTF_8
+                                    )
+                                )
+                            }
+                        }
+                    } catch (_: Throwable) {
+                    }
+                }
+
+                // Записываем также в Logcat, если система его примет.
+                try {
+                    android.util.Log.e(
+                        "IOS27_LAUNCHER_CRASH",
+                        report,
+                        throwable
+                    )
+                } catch (_: Throwable) {
+                }
+
+            } catch (_: Throwable) {
+                // Сам обработчик никогда не должен вызвать
+                // второй необработанный краш.
+            }
+
+            // Передаём управление предыдущему обработчику,
+            // если Android/система его предоставила.
+            try {
+                previousCrashHandler?.uncaughtException(
+                    thread,
+                    throwable
+                )
+            } catch (_: Throwable) {
+                android.os.Process.killProcess(
+                    android.os.Process.myPid()
+                )
+                kotlin.system.exitProcess(10)
+            }
+        }
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
