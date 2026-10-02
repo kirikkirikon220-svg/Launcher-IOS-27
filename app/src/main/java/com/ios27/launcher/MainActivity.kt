@@ -307,9 +307,29 @@ class MainActivity : Activity() {
 
             canvas.save()
 
+            // IOS27_CONTROL_CENTER_ANIMATION_V10
+            // Materialize не ограничивается alpha:
+            // блок одновременно приезжает и слегка масштабируется.
+
+            val revealScale =
+                0.965f +
+                0.035f * p
+
             canvas.translate(
-                0f,
+                width / 2f,
                 travel * (1f - p)
+            )
+
+            canvas.scale(
+                revealScale,
+                revealScale,
+                0f,
+                0f
+            )
+
+            canvas.translate(
+                -width / 2f,
+                0f
             )
 
             val save =
@@ -330,9 +350,10 @@ class MainActivity : Activity() {
             canvas.restore()
         }
 
-        // IOS27_CONTROL_CENTER_STATUS_MORPH_V9
-        // V9: системные индикаторы плавно переходят
-        // из Home Screen в Control Center.
+        // IOS27_CONTROL_CENTER_STATUS_MORPH_V10
+        // Левая группа dematerialize.
+        // Правая группа остаётся видимой.
+        // Control Center materialize идёт по progress пальца.
 
         private fun drawIOSStatusIndicators(
             canvas: Canvas
@@ -366,11 +387,12 @@ class MainActivity : Activity() {
                     leftProgress
                 )
 
-            val rightAlpha =
-                (
-                    1f -
-                    rightProgress
-                )
+            // IOS27_STATUS_BAR_LIQUID_V10
+            // Правая группа НЕ исчезает.
+            // Wi-Fi / сеть / батарея остаются видимыми
+            // на всём протяжении раскрытия Control Center.
+
+            val rightAlpha = 1f
 
             val time =
                 SimpleDateFormat(
@@ -410,11 +432,26 @@ class MainActivity : Activity() {
 
                 canvas.save()
 
+                // Левая группа схлопывается:
+                // движение влево + уменьшение + fade.
+
                 canvas.translate(
                     -dp(8f) *
                         leftProgress,
                     -dp(7f) *
                         leftProgress
+                )
+
+                val leftScale =
+                    1f -
+                    0.08f *
+                    leftProgress
+
+                canvas.scale(
+                    leftScale,
+                    leftScale,
+                    dp(22f),
+                    dp(31f)
                 )
 
                 canvas.drawText(
@@ -461,15 +498,18 @@ class MainActivity : Activity() {
                         )
                         ?: 100
 
+                // Правая группа остаётся на экране,
+                // но слегка участвует в morph-переходе.
+
                 val groupY =
                     dp(25f) +
-                    dp(13f) *
+                    dp(2f) *
                     rightProgress
 
                 canvas.save()
 
                 canvas.translate(
-                    dp(7f) *
+                    dp(3f) *
                         rightProgress,
                     0f
                 )
