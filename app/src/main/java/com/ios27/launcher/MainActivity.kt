@@ -330,6 +330,10 @@ class MainActivity : Activity() {
             canvas.restore()
         }
 
+        // IOS27_CONTROL_CENTER_STATUS_MORPH_V9
+        // V9: системные индикаторы плавно переходят
+        // из Home Screen в Control Center.
+
         private fun drawIOSStatusIndicators(
             canvas: Canvas
         ) {
@@ -1699,6 +1703,10 @@ class MainActivity : Activity() {
         // -----------------------------------------
 
 
+        // IOS27_CONTROL_CENTER_ANIMATION_V9
+        // V9: интерактивное раскрытие Control Center.
+        // Progress напрямую связан с движением пальца.
+
         private fun drawControlCenter(canvas: Canvas) {
 
         // IOS27_CONTROL_CENTER_VISUAL_V5
@@ -2590,7 +2598,7 @@ class MainActivity : Activity() {
 
                     controlCenterProgress =
                         (
-                            dy / dp(300f)
+                            dy / dp(260f)
                         ).coerceIn(0f, 1f)
 
                     invalidate()
@@ -2617,8 +2625,7 @@ class MainActivity : Activity() {
                         controlCenterProgress =
                             1f -
                             (
-                                closeDistance /
-                                dp(300f)
+                                closeDistance / dp(260f)
                             ).coerceIn(0f, 1f)
 
                         invalidate()
@@ -2697,7 +2704,7 @@ class MainActivity : Activity() {
 
                     val shouldOpen =
                         controlCenterProgress >= 0.35f ||
-                        dy >= dp(105f)
+                        dy >= dp(90f)
 
                     controlCenterGesture = false
 
