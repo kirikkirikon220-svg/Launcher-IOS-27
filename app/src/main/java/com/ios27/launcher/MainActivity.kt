@@ -246,6 +246,11 @@ class MainActivity : Activity() {
 
         private var dragging = false
 
+        // IOS27_CONTROL_CENTER_GESTURE_V3
+        // Интерактивный жест Control Center.
+        private var controlCenterGesture = false
+        private var controlCenterStartY = 0f
+
         private val columns = 4
         private val rows = 6
 
@@ -1733,7 +1738,10 @@ class MainActivity : Activity() {
         // -----------------------------------------
 
     private fun openControlCenter() {
+
+        // IOS27_CONTROL_CENTER_GESTURE_V3
         controlCenter = true
+        controlCenterGesture = false
 
         ccAnimator?.cancel()
 
@@ -1757,6 +1765,10 @@ class MainActivity : Activity() {
     }
 
     private fun closeControlCenter() {
+
+        // IOS27_CONTROL_CENTER_GESTURE_V3
+        controlCenterGesture = false
+
         ccAnimator?.cancel()
 
         ccAnimator = ValueAnimator.ofFloat(
@@ -1801,8 +1813,29 @@ class MainActivity : Activity() {
                 downY = y
                 dragging = false
 
+                // IOS27_CONTROL_CENTER_GESTURE_V3
+                // Если Control Center уже открыт:
+                // начинаем отслеживать свайп закрытия.
                 if (controlCenter) {
+
+                    controlCenterGesture = true
+                    controlCenterStartY = y
+
+                    pressedIndex = -1
+                    pressedScale = 1f
+
                     return true
+                }
+
+                // iPhone Face ID behaviour:
+                // Control Center начинается только из верхнего
+                // правого участка экрана.
+                controlCenterGesture =
+                    downY <= dp(95f) &&
+                    downX >= width * 0.55f
+
+                if (controlCenterGesture) {
+                    controlCenterStartY = downY
                 }
 
                 pressedIndex =
@@ -1821,33 +1854,68 @@ class MainActivity : Activity() {
                 val dx = x - downX
                 val dy = y - downY
 
+                // -------------------------------------------------
+                // OPEN CONTROL CENTER
+                // -------------------------------------------------
+
                 if (
                     !controlCenter &&
-                    downY < dp(85f) &&
-                    downX > width * 0.52f &&
-                    dy > dp(10f)
+                    controlCenterGesture &&
+                    dy > dp(4f)
                 ) {
-                    dragging = true
 
+                    dragging = true
                     controlCenter = true
 
+                    // Панель физически следует за пальцем.
                     controlCenterProgress =
-                        (dy / dp(260f))
+                        (dy / dp(300f))
                             .coerceIn(0f, 1f)
+
+                    ccAnimator?.cancel()
 
                     invalidate()
 
                     return true
                 }
 
+                // -------------------------------------------------
+                // CONTROL CENTER IS OPEN
+                // -------------------------------------------------
+
                 if (controlCenter) {
 
-                    if (dy < -dp(60f)) {
-                        closeControlCenter()
+                    // Свайп вверх закрывает панель.
+                    val closeDistance =
+                        controlCenterStartY - y
+
+                    if (closeDistance > dp(25f)) {
+
+                        controlCenterProgress =
+                            1f -
+                            (
+                                closeDistance /
+                                dp(260f)
+                            ).coerceIn(0f, 1f)
+
+                        invalidate()
+
+                        return true
+                    }
+
+                    // Если палец продолжает двигаться вниз,
+                    // удерживаем панель открытой.
+                    if (dy > 0f) {
+                        controlCenterProgress = 1f
+                        invalidate()
                     }
 
                     return true
                 }
+
+                // -------------------------------------------------
+                // HOME SCREEN PAGE SWIPE
+                // -------------------------------------------------
 
                 if (kotlin.math.abs(dx) > dp(12f)) {
                     dragging = true
@@ -1863,16 +1931,68 @@ class MainActivity : Activity() {
 
                 pressedScale = 1f
 
+                // -------------------------------------------------
+                // CONTROL CENTER GESTURE FINISHED
+                // -------------------------------------------------
+
                 if (controlCenter) {
 
-                    if (dy < -dp(45f)) {
+                    controlCenterGesture = false
+
+                    val closeDistance =
+                        controlCenterStartY - y
+
+                    // Быстрый свайп вверх.
+                    if (closeDistance > dp(55f)) {
+
+                        closeControlCenter()
+
+                        return true
+                    }
+
+                    // Палец отпущен после открытия:
+                    // автоматически доводим панель до 100%.
+                    if (
+                        controlCenterProgress >= 0.18f
+                    ) {
+
+                        openControlCenter()
+
+                    } else {
+
                         closeControlCenter()
                     }
 
-                    invalidate()
+                    return true
+                }
+
+                // -------------------------------------------------
+                // SWIPE TO OPEN CONTROL CENTER
+                // -------------------------------------------------
+
+                if (
+                    controlCenterGesture &&
+                    dy > dp(12f)
+                ) {
+
+                    controlCenterGesture = false
+
+                    if (
+                        controlCenterProgress >= 0.18f
+                    ) {
+                        openControlCenter()
+                    } else {
+                        closeControlCenter()
+                    }
 
                     return true
                 }
+
+                controlCenterGesture = false
+
+                // -------------------------------------------------
+                // HOME PAGE SWIPE
+                // -------------------------------------------------
 
                 if (dragging) {
 
@@ -1880,6 +2000,7 @@ class MainActivity : Activity() {
                         kotlin.math.abs(dx) >
                         dp(55f)
                     ) {
+
                         if (dx < 0) {
                             animatePage(1)
                         } else {
@@ -1892,9 +2013,14 @@ class MainActivity : Activity() {
                     return true
                 }
 
+                // -------------------------------------------------
+                // APP TAP
+                // -------------------------------------------------
+
                 if (pressedIndex >= 0) {
 
-                    val index = pressedIndex
+                    val index =
+                        pressedIndex
 
                     pressedIndex = -1
 
@@ -1916,6 +2042,19 @@ class MainActivity : Activity() {
 
                 pressedIndex = -1
                 pressedScale = 1f
+
+                controlCenterGesture = false
+
+                if (controlCenter) {
+
+                    if (
+                        controlCenterProgress >= 0.5f
+                    ) {
+                        openControlCenter()
+                    } else {
+                        closeControlCenter()
+                    }
+                }
 
                 invalidate()
 
