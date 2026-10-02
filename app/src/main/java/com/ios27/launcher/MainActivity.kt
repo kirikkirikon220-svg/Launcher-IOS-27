@@ -2008,13 +2008,23 @@ class MainActivity : Activity() {
 
                     dragging = true
 
-                    controlCenter = true
+                    // IOS27_CONTROL_CENTER_GESTURE_V6
+                    //
+                    // Во время открытия НЕ переводим controlCenter
+                    // в true. Иначе следующий ACTION_MOVE попадает
+                    // в ветку уже открытого Control Center и панель
+                    // мгновенно прыгает к 100%.
+                    //
+                    // Пока палец движется вниз, progress напрямую
+                    // следует за пальцем.
+
+                    dragging = true
 
                     ccAnimator?.cancel()
 
                     controlCenterProgress =
                         (
-                            dy / dp(360f)
+                            dy / dp(300f)
                         ).coerceIn(0f, 1f)
 
                     invalidate()
@@ -2105,23 +2115,23 @@ class MainActivity : Activity() {
                     return true
                 }
 
-                // Жест открытия закончен.
+                // IOS27_CONTROL_CENTER_GESTURE_V6
+                // Завершение интерактивного открытия.
 
                 if (
                     controlCenterGesture &&
-                    dy > dp(12f)
+                    dy > dp(2f)
                 ) {
+
+                    val shouldOpen =
+                        controlCenterProgress >= 0.35f ||
+                        dy >= dp(105f)
 
                     controlCenterGesture = false
 
-                    if (
-                        controlCenterProgress >= 0.35f
-                    ) {
-
+                    if (shouldOpen) {
                         openControlCenter()
-
                     } else {
-
                         closeControlCenter()
                     }
 
@@ -2180,7 +2190,10 @@ class MainActivity : Activity() {
 
                 controlCenterGesture = false
 
-                if (controlCenter) {
+                if (
+                    controlCenter ||
+                    controlCenterProgress > 0f
+                ) {
 
                     if (
                         controlCenterProgress >= 0.35f
