@@ -86,6 +86,8 @@ class MainActivity : Activity() {
         private var pageOffset = 0f
 
         private var controlCenter = false
+    private var controlCenterProgress = 0f
+    private var ccAnimator: ValueAnimator? = null
         private var searchMode = false
         private var editMode = false
 
@@ -475,7 +477,7 @@ class MainActivity : Activity() {
             if (maxPage() > 0) {
                 drawPageDots(
                     canvas,
-                    height - dp(160f)
+                    height - dp(158f)
                 )
             }
 
@@ -618,7 +620,7 @@ class MainActivity : Activity() {
             canvas.drawText(
                 label,
                 cx,
-                cy + dp(46f),
+                cy + dp(43f),
                 textPaint
             )
 
@@ -632,111 +634,62 @@ class MainActivity : Activity() {
         // DOCK
         // -----------------------------------------
 
-        private fun drawDock(
-            canvas: Canvas
-        ) {
 
-            val margin =
-                dp(12f)
+    private fun drawDock(canvas: Canvas) {
+        val margin = dp(12f)
+        val dockHeight = dp(82f)
 
-            val dockHeight =
-                dp(82f)
+        val top = height - dp(103f)
+        val left = margin
+        val right = width - margin
+        val bottom = top + dockHeight
 
-            val top =
-                height - dp(103f)
+        glassPaint.style = Paint.Style.FILL
+        glassPaint.color = Color.argb(105, 255, 255, 255)
 
-            // Soft depth under the glass.
-            shadowPaint.color =
-                Color.argb(
-                    45,
-                    0,
-                    0,
-                    0
+        canvas.drawRoundRect(
+            left,
+            top,
+            right,
+            bottom,
+            dp(27f),
+            dp(27f),
+            glassPaint
+        )
+
+        glassPaint.color = Color.argb(55, 255, 255, 255)
+
+        canvas.drawRoundRect(
+            left + dp(1f),
+            top + dp(1f),
+            right - dp(1f),
+            top + dp(25f),
+            dp(26f),
+            dp(26f),
+            glassPaint
+        )
+
+        val apps = getDockApps()
+        val count = min(4, apps.size)
+
+        if (count > 0) {
+            val slot = (right - left) / count
+
+            for (i in 0 until count) {
+                val cx = left + slot * i + slot / 2f
+                val cy = top + dockHeight / 2f
+
+                drawApp(
+                    canvas,
+                    apps[i],
+                    cx,
+                    cy,
+                    1f,
+                    true
                 )
-
-            canvas.drawRoundRect(
-                margin,
-                top + dp(2f),
-                width - margin,
-                top + dockHeight + dp(2f),
-                dp(27f),
-                dp(27f),
-                shadowPaint
-            )
-
-            // Main Liquid Glass surface.
-            glassPaint.color =
-                Color.argb(
-                    82,
-                    255,
-                    255,
-                    255
-                )
-
-            canvas.drawRoundRect(
-                margin,
-                top,
-                width - margin,
-                top + dockHeight,
-                dp(27f),
-                dp(27f),
-                glassPaint
-            )
-
-            // Very subtle inner glass highlight.
-            glassPaint.color =
-                Color.argb(
-                    24,
-                    255,
-                    255,
-                    255
-                )
-
-            canvas.drawRoundRect(
-                margin + dp(1.5f),
-                top + dp(1.5f),
-                width - margin - dp(1.5f),
-                top + dockHeight - dp(1.5f),
-                dp(25f),
-                dp(25f),
-                glassPaint
-            )
-
-            val dockApps =
-                getDockApps()
-
-            val slot =
-                (width - dp(24f)) / 4f
-
-            dockApps.forEachIndexed {
-                index,
-                app ->
-
-                val cx =
-                    dp(12f) +
-                    slot * index +
-                    slot / 2f
-
-                val cy =
-                    top +
-                    dockHeight / 2f
-
-                val size =
-                    dp(57f)
-
-                app.icon.setBounds(
-                    (cx - size / 2f).toInt(),
-                    (cy - size / 2f).toInt(),
-                    (cx + size / 2f).toInt(),
-                    (cy + size / 2f).toInt()
-                )
-
-                app.icon.alpha =
-                    (255 * homeAlpha).toInt()
-
-                app.icon.draw(canvas)
             }
         }
+    }
 
         private fun getDockApps(): List<AppItem> {
 
@@ -1073,108 +1026,447 @@ class MainActivity : Activity() {
         // CONTROL CENTER
         // -----------------------------------------
 
-        private fun drawControlCenter(
-            canvas: Canvas
-        ) {
 
-            paint.color =
+    private fun drawControlCenter(canvas: Canvas) {
+        val p = controlCenterProgress
+
+        if (p <= 0f) return
+
+        val scrimAlpha = (125f * p).toInt().coerceIn(0, 255)
+
+        bgPaint.color = Color.argb(
+            scrimAlpha,
+            0,
+            0,
+            0
+        )
+
+        canvas.drawRect(
+            0f,
+            0f,
+            width.toFloat(),
+            height.toFloat(),
+            bgPaint
+        )
+
+        val w = width.toFloat()
+        val h = height.toFloat()
+
+        val panelLeft = dp(12f)
+        val panelTop = dp(18f)
+        val panelRight = w - dp(12f)
+        val panelBottom = h - dp(18f)
+
+        val fromLeft = w - dp(18f)
+        val fromTop = -dp(30f)
+
+        val left = fromLeft +
+                (panelLeft - fromLeft) * p
+
+        val top = fromTop +
+                (panelTop - fromTop) * p
+
+        val right = panelRight
+        val bottom = panelBottom
+
+        canvas.save()
+
+        val scale = 0.94f + 0.06f * p
+
+        canvas.scale(
+            scale,
+            scale,
+            w - dp(12f),
+            dp(18f)
+        )
+
+        glassPaint.style = Paint.Style.FILL
+        glassPaint.color = Color.argb(
+            225,
+            245,
+            245,
+            250
+        )
+
+        canvas.drawRoundRect(
+            left,
+            top,
+            right,
+            bottom,
+            dp(30f),
+            dp(30f),
+            glassPaint
+        )
+
+        glassPaint.color = Color.argb(
+            45,
+            255,
+            255,
+            255
+        )
+
+        canvas.drawRoundRect(
+            left + dp(1f),
+            top + dp(1f),
+            right - dp(1f),
+            top + dp(82f),
+            dp(29f),
+            dp(29f),
+            glassPaint
+        )
+
+        textPaint.color = Color.BLACK
+        textPaint.textSize = dp(24f)
+        textPaint.typeface = Typeface.create(
+            Typeface.DEFAULT,
+            Typeface.BOLD
+        )
+        textPaint.textAlign = Paint.Align.LEFT
+
+        canvas.drawText(
+            "Пункт управления",
+            left + dp(22f),
+            top + dp(39f),
+            textPaint
+        )
+
+        val gap = dp(10f)
+
+        val contentLeft = left + dp(18f)
+        val contentTop = top + dp(60f)
+
+        val groupWidth =
+            (right - left - dp(46f)) / 2f
+
+        val groupHeight = dp(112f)
+
+        glassPaint.color = Color.argb(
+            100,
+            220,
+            220,
+            225
+        )
+
+        canvas.drawRoundRect(
+            contentLeft,
+            contentTop,
+            contentLeft + groupWidth,
+            contentTop + groupHeight,
+            dp(23f),
+            dp(23f),
+            glassPaint
+        )
+
+        drawCCCircle(
+            canvas,
+            contentLeft + dp(34f),
+            contentTop + dp(34f),
+            dp(22f),
+            "Wi",
+            true
+        )
+
+        drawCCCircle(
+            canvas,
+            contentLeft + dp(91f),
+            contentTop + dp(34f),
+            dp(22f),
+            "BT",
+            true
+        )
+
+        drawCCCircle(
+            canvas,
+            contentLeft + dp(34f),
+            contentTop + dp(82f),
+            dp(22f),
+            "✈",
+            false
+        )
+
+        drawCCCircle(
+            canvas,
+            contentLeft + dp(91f),
+            contentTop + dp(82f),
+            dp(22f),
+            "M",
+            false
+        )
+
+        val mediaLeft =
+            contentLeft + groupWidth + gap
+
+        glassPaint.color = Color.argb(
+            100,
+            220,
+            220,
+            225
+        )
+
+        canvas.drawRoundRect(
+            mediaLeft,
+            contentTop,
+            mediaLeft + groupWidth,
+            contentTop + groupHeight,
+            dp(23f),
+            dp(23f),
+            glassPaint
+        )
+
+        textPaint.color = Color.DKGRAY
+        textPaint.textSize = dp(12f)
+        textPaint.typeface = Typeface.DEFAULT_BOLD
+
+        canvas.drawText(
+            "Сейчас играет",
+            mediaLeft + dp(16f),
+            contentTop + dp(27f),
+            textPaint
+        )
+
+        textPaint.color = Color.BLACK
+        textPaint.textSize = dp(17f)
+
+        canvas.drawText(
+            "Музыка",
+            mediaLeft + dp(16f),
+            contentTop + dp(51f),
+            textPaint
+        )
+
+        textPaint.color = Color.DKGRAY
+        textPaint.textSize = dp(11f)
+
+        canvas.drawText(
+            "Ничего не воспроизводится",
+            mediaLeft + dp(16f),
+            contentTop + dp(73f),
+            textPaint
+        )
+
+        drawCCCircle(
+            canvas,
+            mediaLeft + groupWidth - dp(31f),
+            contentTop + dp(76f),
+            dp(20f),
+            "▶",
+            false
+        )
+
+        val sliderY =
+            contentTop + groupHeight + gap
+
+        drawCCSlider(
+            canvas,
+            left + dp(18f),
+            sliderY,
+            right - left - dp(36f),
+            dp(58f),
+            "☀"
+        )
+
+        drawCCSlider(
+            canvas,
+            left + dp(18f),
+            sliderY + dp(68f),
+            right - left - dp(36f),
+            dp(58f),
+            "♪"
+        )
+
+        val smallY =
+            sliderY + dp(138f)
+
+        val smallWidth =
+            (right - left - dp(56f)) / 4f
+
+        drawCCSmall(
+            canvas,
+            left + dp(18f),
+            smallY,
+            smallWidth,
+            "Фокус"
+        )
+
+        drawCCSmall(
+            canvas,
+            left + dp(28f) + smallWidth,
+            smallY,
+            smallWidth,
+            "Air"
+        )
+
+        drawCCSmall(
+            canvas,
+            left + dp(38f) + smallWidth * 2f,
+            smallY,
+            smallWidth,
+            "QR"
+        )
+
+        drawCCSmall(
+            canvas,
+            left + dp(48f) + smallWidth * 3f,
+            smallY,
+            smallWidth,
+            "+"
+        )
+
+        canvas.restore()
+    }
+
+    private fun drawCCCircle(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float,
+        label: String,
+        active: Boolean
+    ) {
+        glassPaint.color =
+            if (active) {
+                Color.rgb(30, 110, 245)
+            } else {
                 Color.argb(
-                    125,
-                    0,
-                    0,
-                    0
+                    105,
+                    205,
+                    205,
+                    210
                 )
+            }
 
-            canvas.drawRect(
-                0f,
-                0f,
-                width.toFloat(),
-                height.toFloat(),
-                paint
-            )
+        canvas.drawCircle(
+            cx,
+            cy,
+            radius,
+            glassPaint
+        )
 
-            val margin =
-                dp(14f)
-
-            glassPaint.color =
-                Color.argb(
-                    185,
-                    245,
-                    248,
-                    255
-                )
-
-            canvas.drawRoundRect(
-                margin,
-                dp(45f),
-                width - margin,
-                height - dp(22f),
-                dp(34f),
-                dp(34f),
-                glassPaint
-            )
-
-            textPaint.color =
+        textPaint.color =
+            if (active) {
+                Color.WHITE
+            } else {
                 Color.BLACK
+            }
 
-            textPaint.textSize =
-                dp(26f)
+        textPaint.textSize = dp(12f)
 
-            textPaint.typeface =
-                Typeface.DEFAULT_BOLD
-
-            canvas.drawText(
-                "Пункт управления",
-                dp(33f),
-                dp(98f),
-                textPaint
+        textPaint.typeface =
+            Typeface.create(
+                Typeface.DEFAULT,
+                Typeface.BOLD
             )
 
-            drawCCButton(
-                canvas,
-                dp(30f),
-                dp(125f),
-                "✈",
-                "Авиарежим"
-            )
+        textPaint.textAlign =
+            Paint.Align.CENTER
 
-            drawCCButton(
-                canvas,
-                dp(188f),
-                dp(125f),
-                "Wi",
-                "Wi-Fi"
-            )
+        canvas.drawText(
+            label,
+            cx,
+            cy + dp(4f),
+            textPaint
+        )
 
-            drawCCButton(
-                canvas,
-                dp(30f),
-                dp(220f),
-                "☼",
-                "Яркость"
-            )
+        textPaint.textAlign =
+            Paint.Align.LEFT
+    }
 
-            drawCCButton(
-                canvas,
-                dp(188f),
-                dp(220f),
-                "◉",
-                "Фокус"
-            )
+    private fun drawCCSlider(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        icon: String
+    ) {
+        glassPaint.color = Color.argb(
+            105,
+            210,
+            210,
+            215
+        )
 
-            textPaint.textSize =
-                dp(14f)
+        canvas.drawRoundRect(
+            x,
+            y,
+            x + width,
+            y + height,
+            dp(24f),
+            dp(24f),
+            glassPaint
+        )
 
-            textPaint.typeface =
-                Typeface.DEFAULT
+        glassPaint.color = Color.argb(
+            245,
+            255,
+            255,
+            255
+        )
 
-            canvas.drawText(
-                "Нажмите вне панели для закрытия",
-                dp(33f),
-                height - dp(52f),
-                textPaint
-            )
-        }
+        canvas.drawRoundRect(
+            x + dp(5f),
+            y + dp(5f),
+            x + width * 0.68f,
+            y + height - dp(5f),
+            dp(20f),
+            dp(20f),
+            glassPaint
+        )
+
+        textPaint.color = Color.BLACK
+        textPaint.textSize = dp(22f)
+        textPaint.textAlign = Paint.Align.CENTER
+
+        canvas.drawText(
+            icon,
+            x + dp(30f),
+            y + height / 2f + dp(7f),
+            textPaint
+        )
+
+        textPaint.textAlign =
+            Paint.Align.LEFT
+    }
+
+    private fun drawCCSmall(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        width: Float,
+        title: String
+    ) {
+        glassPaint.color = Color.argb(
+            105,
+            210,
+            210,
+            215
+        )
+
+        canvas.drawRoundRect(
+            x,
+            y,
+            x + width,
+            y + dp(58f),
+            dp(20f),
+            dp(20f),
+            glassPaint
+        )
+
+        textPaint.color = Color.BLACK
+        textPaint.textSize = dp(11f)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = Typeface.DEFAULT_BOLD
+
+        canvas.drawText(
+            title,
+            x + width / 2f,
+            y + dp(34f),
+            textPaint
+        )
+
+        textPaint.textAlign =
+            Paint.Align.LEFT
+    }
 
         private fun drawCCButton(
             canvas: Canvas,
@@ -1233,204 +1525,200 @@ class MainActivity : Activity() {
         }
 
         // -----------------------------------------
-        // TOUCH
-        // -----------------------------------------
 
-        override fun onTouchEvent(
-            event: MotionEvent
-        ): Boolean {
+    private fun openControlCenter() {
+        controlCenter = true
 
-            when (event.actionMasked) {
+        ccAnimator?.cancel()
 
-                MotionEvent.ACTION_DOWN -> {
+        ccAnimator = ValueAnimator.ofFloat(
+            controlCenterProgress,
+            1f
+        ).apply {
+            duration = 330L
+            interpolator =
+                DecelerateInterpolator(1.6f)
 
-                    downX =
-                        event.x
+            addUpdateListener {
+                controlCenterProgress =
+                    it.animatedValue as Float
 
-                    downY =
-                        event.y
-
-                    dragging = true
-
-                    pressedIndex =
-                        getAppIndex(
-                            event.x,
-                            event.y
-                        )
-
-                    if (pressedIndex >= 0) {
-                        pressAnimator.cancel()
-                        pressAnimator.start()
-                    }
-
-                    return true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-
-                    val dx =
-                        event.x - downX
-
-                    if (abs(dx) > dp(15f) &&
-                        !controlCenter &&
-                        !searchMode
-                    ) {
-
-                        val maxDistance =
-                            width.toFloat()
-
-                        pageOffset =
-                            (-dx / maxDistance)
-                                .coerceIn(
-                                    -1f,
-                                    1f
-                                )
-
-                        invalidate()
-                    }
-
-                    return true
-                }
-
-                MotionEvent.ACTION_UP -> {
-
-                    dragging = false
-
-                    val dx =
-                        event.x - downX
-
-                    val dy =
-                        event.y - downY
-
-                    if (controlCenter) {
-
-                        controlCenter = false
-
-                        invalidate()
-
-                        return true
-                    }
-
-                    if (searchMode) {
-
-                        if (dy > dp(50f)) {
-                            searchMode = false
-                        }
-
-                        invalidate()
-
-                        return true
-                    }
-
-                    if (abs(dx) > dp(80f)) {
-
-                        if (dx < 0f &&
-                            page < maxPage()
-                        ) {
-
-                            animatePage(
-                                page + 1
-                            )
-
-                        } else if (
-                            dx > 0f &&
-                            page > 0
-                        ) {
-
-                            animatePage(
-                                page - 1
-                            )
-
-                        } else {
-
-                            animatePage(
-                                page
-                            )
-                        }
-
-                        pressedIndex = -1
-
-                        return true
-                    }
-
-                    val searchTop =
-                        height - dp(149f)
-
-                    val searchBottom =
-                        height - dp(117f)
-
-                    val searchLeft =
-                        width / 2f - dp(46f)
-
-                    val searchRight =
-                        width / 2f + dp(46f)
-
-                    if (
-                        event.x >= searchLeft &&
-                        event.x <= searchRight &&
-                        event.y >= searchTop &&
-                        event.y <= searchBottom
-                    ) {
-
-                        searchMode = true
-
-                        pressedIndex = -1
-
-                        invalidate()
-
-                        return true
-                    }
-
-                    if (
-                        downY < dp(80f) &&
-                        downX > width * 0.50f &&
-                        dy > dp(80f)
-                    ) {
-
-                        controlCenter = true
-
-                        pressedIndex = -1
-
-                        pageOffset = 0f
-
-                        invalidate()
-
-                        return true
-                    }
-
-                    if (
-                        abs(dx) < dp(30f) &&
-                        abs(dy) < dp(30f)
-                    ) {
-
-                        openAppAt(
-                            event.x,
-                            event.y
-                        )
-                    }
-
-                    pressedIndex = -1
-
-                    pageOffset = 0f
-
-                    invalidate()
-
-                    return true
-                }
-
-                MotionEvent.ACTION_CANCEL -> {
-
-                    pressedIndex = -1
-                    pageOffset = 0f
-
-                    invalidate()
-
-                    return true
-                }
+                invalidate()
             }
 
-            return true
+            start()
         }
+    }
+
+    private fun closeControlCenter() {
+        ccAnimator?.cancel()
+
+        ccAnimator = ValueAnimator.ofFloat(
+            controlCenterProgress,
+            0f
+        ).apply {
+            duration = 260L
+            interpolator =
+                DecelerateInterpolator(1.5f)
+
+            addUpdateListener {
+                controlCenterProgress =
+                    it.animatedValue as Float
+
+                if (controlCenterProgress <= 0.01f) {
+                    controlCenter = false
+                }
+
+                invalidate()
+            }
+
+            start()
+        }
+    }
+
+    // TOUCH
+        // -----------------------------------------
+
+
+    override fun onTouchEvent(
+        event: MotionEvent
+    ): Boolean {
+
+        val x = event.x
+        val y = event.y
+
+        when (event.actionMasked) {
+
+            MotionEvent.ACTION_DOWN -> {
+
+                downX = x
+                downY = y
+                dragging = false
+
+                if (controlCenter) {
+                    return true
+                }
+
+                pressedIndex =
+                    getAppIndex(x, y)
+
+                if (pressedIndex >= 0) {
+                    pressedScale = 0.94f
+                    invalidate()
+                }
+
+                return true
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+
+                val dx = x - downX
+                val dy = y - downY
+
+                if (
+                    !controlCenter &&
+                    downY < dp(85f) &&
+                    downX > width * 0.52f &&
+                    dy > dp(10f)
+                ) {
+                    dragging = true
+
+                    controlCenter = true
+
+                    controlCenterProgress =
+                        (dy / dp(260f))
+                            .coerceIn(0f, 1f)
+
+                    invalidate()
+
+                    return true
+                }
+
+                if (controlCenter) {
+
+                    if (dy < -dp(60f)) {
+                        closeControlCenter()
+                    }
+
+                    return true
+                }
+
+                if (kotlin.math.abs(dx) > dp(12f)) {
+                    dragging = true
+                }
+
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+
+                val dx = x - downX
+                val dy = y - downY
+
+                pressedScale = 1f
+
+                if (controlCenter) {
+
+                    if (dy < -dp(45f)) {
+                        closeControlCenter()
+                    }
+
+                    invalidate()
+
+                    return true
+                }
+
+                if (dragging) {
+
+                    if (
+                        kotlin.math.abs(dx) >
+                        dp(55f)
+                    ) {
+                        if (dx < 0) {
+                            animatePage(1)
+                        } else {
+                            animatePage(-1)
+                        }
+                    }
+
+                    invalidate()
+
+                    return true
+                }
+
+                if (pressedIndex >= 0) {
+
+                    val index = pressedIndex
+
+                    pressedIndex = -1
+
+                    invalidate()
+
+                    launchApp(index)
+
+                    return true
+                }
+
+                pressedIndex = -1
+
+                invalidate()
+
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+
+                pressedIndex = -1
+                pressedScale = 1f
+
+                invalidate()
+
+                return true
+            }
+        }
+
+        return true
+    }
 
         private fun animatePage(
             target: Int
