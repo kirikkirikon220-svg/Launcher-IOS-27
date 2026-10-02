@@ -246,10 +246,11 @@ class MainActivity : Activity() {
 
         private var dragging = false
 
-        // IOS27_CONTROL_CENTER_GESTURE_V3
+        // IOS27_CONTROL_CENTER_GESTURE_V4
         // Интерактивный жест Control Center.
         private var controlCenterGesture = false
         private var controlCenterStartY = 0f
+        private var controlCenterStartX = 0f
 
         private val columns = 4
         private val rows = 6
@@ -1225,12 +1226,6 @@ class MainActivity : Activity() {
             textPaint.typeface =
                 Typeface.DEFAULT
 
-            canvas.drawText(
-                "Потяните вниз, чтобы закрыть",
-                dp(25f),
-                dp(195f),
-                textPaint
-            )
         }
 
         // -----------------------------------------
@@ -1239,14 +1234,27 @@ class MainActivity : Activity() {
 
 
     private fun drawControlCenter(canvas: Canvas) {
-        val p = controlCenterProgress
 
-        if (p <= 0f) return
+        val p = controlCenterProgress.coerceIn(0f, 1f)
 
-        val scrimAlpha = (125f * p).toInt().coerceIn(0, 255)
+        if (p <= 0f) {
+            return
+        }
+
+        val w = width.toFloat()
+        val h = height.toFloat()
+
+        // IOS27_CONTROL_CENTER_VISUAL_V4
+        //
+        // Панель появляется сверху вниз.
+        // Во время свайпа её положение напрямую
+        // связано с движением пальца.
+
+        val eased =
+            1f - (1f - p) * (1f - p)
 
         bgPaint.color = Color.argb(
-            scrimAlpha,
+            (95f * eased).toInt().coerceIn(0, 255),
             0,
             0,
             0
@@ -1255,172 +1263,106 @@ class MainActivity : Activity() {
         canvas.drawRect(
             0f,
             0f,
-            width.toFloat(),
-            height.toFloat(),
+            w,
+            h,
             bgPaint
         )
 
-        val w = width.toFloat()
-        val h = height.toFloat()
-
-        val panelLeft = dp(12f)
-        val panelTop = dp(18f)
-        val panelRight = w - dp(12f)
-        val panelBottom = h - dp(18f)
-
-        val fromLeft = w - dp(18f)
-        val fromTop = -dp(30f)
-
-        val left = fromLeft +
-                (panelLeft - fromLeft) * p
-
-        val top = fromTop +
-                (panelTop - fromTop) * p
-
-        val right = panelRight
-        val bottom = panelBottom
+        val slideOffset =
+            -h * 0.035f * (1f - eased)
 
         canvas.save()
 
-        val scale = 0.94f + 0.06f * p
-
-        canvas.scale(
-            scale,
-            scale,
-            w - dp(12f),
-            dp(18f)
+        canvas.translate(
+            0f,
+            slideOffset
         )
 
-        glassPaint.style = Paint.Style.FILL
-        glassPaint.color = Color.argb(
-            225,
-            245,
-            245,
-            250
-        )
-
-        canvas.drawRoundRect(
-            left,
-            top,
-            right,
-            bottom,
-            dp(30f),
-            dp(30f),
-            glassPaint
-        )
-
-        glassPaint.color = Color.argb(
-            45,
-            255,
-            255,
-            255
-        )
-
-        canvas.drawRoundRect(
-            left + dp(1f),
-            top + dp(1f),
-            right - dp(1f),
-            top + dp(82f),
-            dp(29f),
-            dp(29f),
-            glassPaint
-        )
-
-        textPaint.color = Color.BLACK
-        textPaint.textSize = dp(24f)
-        textPaint.typeface = Typeface.create(
-            Typeface.DEFAULT,
-            Typeface.BOLD
-        )
-        textPaint.textAlign = Paint.Align.LEFT
-
-        canvas.drawText(
-            "Пункт управления",
-            left + dp(22f),
-            top + dp(39f),
-            textPaint
-        )
-
+        val margin = dp(14f)
+        val top = dp(18f)
         val gap = dp(10f)
 
-        val contentLeft = left + dp(18f)
-        val contentTop = top + dp(60f)
-
         val groupWidth =
-            (right - left - dp(46f)) / 2f
+            (w - margin * 2f - gap) / 2f
 
-        val groupHeight = dp(112f)
+        val groupHeight = dp(118f)
+
+        // Connectivity
+
+        glassPaint.style = Paint.Style.FILL
 
         glassPaint.color = Color.argb(
-            100,
-            220,
-            220,
-            225
+            (210f * eased).toInt(),
+            235,
+            235,
+            242
         )
 
         canvas.drawRoundRect(
-            contentLeft,
-            contentTop,
-            contentLeft + groupWidth,
-            contentTop + groupHeight,
-            dp(23f),
-            dp(23f),
+            margin,
+            top,
+            margin + groupWidth,
+            top + groupHeight,
+            dp(28f),
+            dp(28f),
             glassPaint
         )
 
         drawCCCircle(
             canvas,
-            contentLeft + dp(34f),
-            contentTop + dp(34f),
-            dp(22f),
+            margin + dp(37f),
+            top + dp(36f),
+            dp(23f),
             "Wi",
             true
         )
 
         drawCCCircle(
             canvas,
-            contentLeft + dp(91f),
-            contentTop + dp(34f),
-            dp(22f),
+            margin + dp(96f),
+            top + dp(36f),
+            dp(23f),
             "BT",
             true
         )
 
         drawCCCircle(
             canvas,
-            contentLeft + dp(34f),
-            contentTop + dp(82f),
-            dp(22f),
+            margin + dp(37f),
+            top + dp(86f),
+            dp(23f),
             "✈",
             false
         )
 
         drawCCCircle(
             canvas,
-            contentLeft + dp(91f),
-            contentTop + dp(82f),
-            dp(22f),
+            margin + dp(96f),
+            top + dp(86f),
+            dp(23f),
             "M",
             false
         )
 
+        // Media
+
         val mediaLeft =
-            contentLeft + groupWidth + gap
+            margin + groupWidth + gap
 
         glassPaint.color = Color.argb(
-            100,
-            220,
-            220,
-            225
+            (210f * eased).toInt(),
+            235,
+            235,
+            242
         )
 
         canvas.drawRoundRect(
             mediaLeft,
-            contentTop,
+            top,
             mediaLeft + groupWidth,
-            contentTop + groupHeight,
-            dp(23f),
-            dp(23f),
+            top + groupHeight,
+            dp(28f),
+            dp(28f),
             glassPaint
         )
 
@@ -1430,70 +1372,77 @@ class MainActivity : Activity() {
 
         canvas.drawText(
             "Сейчас играет",
-            mediaLeft + dp(16f),
-            contentTop + dp(27f),
+            mediaLeft + dp(17f),
+            top + dp(28f),
             textPaint
         )
 
         textPaint.color = Color.BLACK
-        textPaint.textSize = dp(17f)
+        textPaint.textSize = dp(18f)
 
         canvas.drawText(
             "Музыка",
-            mediaLeft + dp(16f),
-            contentTop + dp(51f),
+            mediaLeft + dp(17f),
+            top + dp(55f),
             textPaint
         )
 
         textPaint.color = Color.DKGRAY
         textPaint.textSize = dp(11f)
+        textPaint.typeface = Typeface.DEFAULT
 
         canvas.drawText(
             "Ничего не воспроизводится",
-            mediaLeft + dp(16f),
-            contentTop + dp(73f),
+            mediaLeft + dp(17f),
+            top + dp(77f),
             textPaint
         )
 
         drawCCCircle(
             canvas,
             mediaLeft + groupWidth - dp(31f),
-            contentTop + dp(76f),
+            top + dp(88f),
             dp(20f),
             "▶",
             false
         )
 
+        // Brightness
+
         val sliderY =
-            contentTop + groupHeight + gap
+            top + groupHeight + gap
 
         drawCCSlider(
             canvas,
-            left + dp(18f),
+            margin,
             sliderY,
-            right - left - dp(36f),
+            w - margin * 2f,
             dp(58f),
             "☀"
         )
 
+        // Volume
+
         drawCCSlider(
             canvas,
-            left + dp(18f),
+            margin,
             sliderY + dp(68f),
-            right - left - dp(36f),
+            w - margin * 2f,
             dp(58f),
             "♪"
         )
+
+        // Bottom controls
 
         val smallY =
             sliderY + dp(138f)
 
         val smallWidth =
-            (right - left - dp(56f)) / 4f
+            (w - margin * 2f - dp(30f)) / 4f
 
         drawCCSmall(
             canvas,
-            left + dp(18f),
+            margin,
             smallY,
             smallWidth,
             "Фокус"
@@ -1501,15 +1450,15 @@ class MainActivity : Activity() {
 
         drawCCSmall(
             canvas,
-            left + dp(28f) + smallWidth,
+            margin + smallWidth + dp(10f),
             smallY,
             smallWidth,
-            "Air"
+            "Камера"
         )
 
         drawCCSmall(
             canvas,
-            left + dp(38f) + smallWidth * 2f,
+            margin + (smallWidth + dp(10f)) * 2f,
             smallY,
             smallWidth,
             "QR"
@@ -1517,7 +1466,7 @@ class MainActivity : Activity() {
 
         drawCCSmall(
             canvas,
-            left + dp(48f) + smallWidth * 3f,
+            margin + (smallWidth + dp(10f)) * 3f,
             smallY,
             smallWidth,
             "+"
@@ -1739,64 +1688,77 @@ class MainActivity : Activity() {
 
     private fun openControlCenter() {
 
-        // IOS27_CONTROL_CENTER_GESTURE_V3
+        // IOS27_CONTROL_CENTER_ANIMATION_V4
+
         controlCenter = true
         controlCenterGesture = false
 
         ccAnimator?.cancel()
 
-        ccAnimator = ValueAnimator.ofFloat(
-            controlCenterProgress,
-            1f
-        ).apply {
-            duration = 330L
-            interpolator =
-                DecelerateInterpolator(1.6f)
+        ccAnimator =
+            ValueAnimator.ofFloat(
+                controlCenterProgress,
+                1f
+            ).apply {
 
-            addUpdateListener {
-                controlCenterProgress =
-                    it.animatedValue as Float
+                duration = 260L
 
-                invalidate()
+                interpolator =
+                    DecelerateInterpolator(1.35f)
+
+                addUpdateListener {
+
+                    controlCenterProgress =
+                        it.animatedValue as Float
+
+                    invalidate()
+                }
+
+                start()
             }
-
-            start()
-        }
     }
 
     private fun closeControlCenter() {
 
-        // IOS27_CONTROL_CENTER_GESTURE_V3
+        // IOS27_CONTROL_CENTER_ANIMATION_V4
+
         controlCenterGesture = false
 
         ccAnimator?.cancel()
 
-        ccAnimator = ValueAnimator.ofFloat(
-            controlCenterProgress,
-            0f
-        ).apply {
-            duration = 260L
-            interpolator =
-                DecelerateInterpolator(1.5f)
+        ccAnimator =
+            ValueAnimator.ofFloat(
+                controlCenterProgress,
+                0f
+            ).apply {
 
-            addUpdateListener {
-                controlCenterProgress =
-                    it.animatedValue as Float
+                duration = 220L
 
-                if (controlCenterProgress <= 0.01f) {
-                    controlCenter = false
+                interpolator =
+                    DecelerateInterpolator(1.45f)
+
+                addUpdateListener {
+
+                    controlCenterProgress =
+                        it.animatedValue as Float
+
+                    if (
+                        controlCenterProgress <= 0.01f
+                    ) {
+
+                        controlCenterProgress = 0f
+                        controlCenter = false
+                    }
+
+                    invalidate()
                 }
 
-                invalidate()
+                start()
             }
-
-            start()
-        }
     }
 
     // TOUCH
-        // -----------------------------------------
-
+    // -----------------------------------------
 
     override fun onTouchEvent(
         event: MotionEvent
@@ -1813,13 +1775,13 @@ class MainActivity : Activity() {
                 downY = y
                 dragging = false
 
-                // IOS27_CONTROL_CENTER_GESTURE_V3
-                // Если Control Center уже открыт:
-                // начинаем отслеживать свайп закрытия.
+                // Control Center уже открыт.
                 if (controlCenter) {
 
                     controlCenterGesture = true
+
                     controlCenterStartY = y
+                    controlCenterStartX = x
 
                     pressedIndex = -1
                     pressedScale = 1f
@@ -1827,21 +1789,29 @@ class MainActivity : Activity() {
                     return true
                 }
 
-                // iPhone Face ID behaviour:
-                // Control Center начинается только из верхнего
-                // правого участка экрана.
+                // iPhone Face ID:
+                // начало Control Center только
+                // из верхнего правого участка.
                 controlCenterGesture =
-                    downY <= dp(95f) &&
-                    downX >= width * 0.55f
+                    y <= dp(88f) &&
+                    x >= width * 0.55f
 
                 if (controlCenterGesture) {
-                    controlCenterStartY = downY
+
+                    controlCenterStartY = y
+                    controlCenterStartX = x
+
+                    pressedIndex = -1
+                    pressedScale = 1f
+
+                    return true
                 }
 
                 pressedIndex =
                     getAppIndex(x, y)
 
                 if (pressedIndex >= 0) {
+
                     pressedScale = 0.94f
                     invalidate()
                 }
@@ -1854,48 +1824,45 @@ class MainActivity : Activity() {
                 val dx = x - downX
                 val dy = y - downY
 
-                // -------------------------------------------------
                 // OPEN CONTROL CENTER
-                // -------------------------------------------------
 
                 if (
                     !controlCenter &&
                     controlCenterGesture &&
-                    dy > dp(4f)
+                    dy > dp(2f)
                 ) {
 
                     dragging = true
+
                     controlCenter = true
 
-                    // Панель физически следует за пальцем.
-                    controlCenterProgress =
-                        (dy / dp(300f))
-                            .coerceIn(0f, 1f)
-
                     ccAnimator?.cancel()
+
+                    controlCenterProgress =
+                        (
+                            dy / dp(300f)
+                        ).coerceIn(0f, 1f)
 
                     invalidate()
 
                     return true
                 }
 
-                // -------------------------------------------------
-                // CONTROL CENTER IS OPEN
-                // -------------------------------------------------
+                // CONTROL CENTER OPEN
 
                 if (controlCenter) {
 
-                    // Свайп вверх закрывает панель.
                     val closeDistance =
                         controlCenterStartY - y
 
-                    if (closeDistance > dp(25f)) {
+                    // Свайп вверх.
+                    if (closeDistance > 0f) {
 
                         controlCenterProgress =
                             1f -
                             (
                                 closeDistance /
-                                dp(260f)
+                                dp(300f)
                             ).coerceIn(0f, 1f)
 
                         invalidate()
@@ -1903,21 +1870,20 @@ class MainActivity : Activity() {
                         return true
                     }
 
-                    // Если палец продолжает двигаться вниз,
-                    // удерживаем панель открытой.
+                    // Движение вниз.
                     if (dy > 0f) {
+
                         controlCenterProgress = 1f
+
                         invalidate()
                     }
 
                     return true
                 }
 
-                // -------------------------------------------------
-                // HOME SCREEN PAGE SWIPE
-                // -------------------------------------------------
+                // HOME PAGE SWIPE
 
-                if (kotlin.math.abs(dx) > dp(12f)) {
+                if (abs(dx) > dp(12f)) {
                     dragging = true
                 }
 
@@ -1931,9 +1897,7 @@ class MainActivity : Activity() {
 
                 pressedScale = 1f
 
-                // -------------------------------------------------
-                // CONTROL CENTER GESTURE FINISHED
-                // -------------------------------------------------
+                // CONTROL CENTER
 
                 if (controlCenter) {
 
@@ -1942,18 +1906,19 @@ class MainActivity : Activity() {
                     val closeDistance =
                         controlCenterStartY - y
 
-                    // Быстрый свайп вверх.
-                    if (closeDistance > dp(55f)) {
+                    // Свайп вверх закрывает.
+                    if (
+                        closeDistance > dp(55f)
+                    ) {
 
                         closeControlCenter()
 
                         return true
                     }
 
-                    // Палец отпущен после открытия:
-                    // автоматически доводим панель до 100%.
+                    // Более трети — открываем.
                     if (
-                        controlCenterProgress >= 0.18f
+                        controlCenterProgress >= 0.35f
                     ) {
 
                         openControlCenter()
@@ -1966,9 +1931,7 @@ class MainActivity : Activity() {
                     return true
                 }
 
-                // -------------------------------------------------
-                // SWIPE TO OPEN CONTROL CENTER
-                // -------------------------------------------------
+                // Жест открытия закончен.
 
                 if (
                     controlCenterGesture &&
@@ -1978,10 +1941,13 @@ class MainActivity : Activity() {
                     controlCenterGesture = false
 
                     if (
-                        controlCenterProgress >= 0.18f
+                        controlCenterProgress >= 0.35f
                     ) {
+
                         openControlCenter()
+
                     } else {
+
                         closeControlCenter()
                     }
 
@@ -1990,15 +1956,12 @@ class MainActivity : Activity() {
 
                 controlCenterGesture = false
 
-                // -------------------------------------------------
                 // HOME PAGE SWIPE
-                // -------------------------------------------------
 
                 if (dragging) {
 
                     if (
-                        kotlin.math.abs(dx) >
-                        dp(55f)
+                        abs(dx) > dp(55f)
                     ) {
 
                         if (dx < 0) {
@@ -2013,9 +1976,7 @@ class MainActivity : Activity() {
                     return true
                 }
 
-                // -------------------------------------------------
                 // APP TAP
-                // -------------------------------------------------
 
                 if (pressedIndex >= 0) {
 
@@ -2048,10 +2009,13 @@ class MainActivity : Activity() {
                 if (controlCenter) {
 
                     if (
-                        controlCenterProgress >= 0.5f
+                        controlCenterProgress >= 0.35f
                     ) {
+
                         openControlCenter()
+
                     } else {
+
                         closeControlCenter()
                     }
                 }
