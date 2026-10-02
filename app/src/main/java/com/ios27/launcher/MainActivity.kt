@@ -78,6 +78,21 @@ class MainActivity : Activity() {
         private val bgPaint =
             Paint(Paint.ANTI_ALIAS_FLAG)
 
+        // Cached wallpaper shaders.
+        // They are recreated only when the View size changes,
+        // not on every onDraw() call.
+        private var wallpaperWidth = 0
+        private var wallpaperHeight = 0
+
+        private var wallpaperGradient: LinearGradient? = null
+        private var wallpaperGlow1: RadialGradient? = null
+        private var wallpaperGlow2: RadialGradient? = null
+        private var wallpaperGlow3: RadialGradient? = null
+
+        // Dock cache.
+        // getDockApps() must not allocate lists on every frame.
+        private var dockAppsCache: List<AppItem> = emptyList()
+
         private var downX = 0f
         private var downY = 0f
 
@@ -215,6 +230,9 @@ class MainActivity : Activity() {
             page =
                 min(page, maxPage)
 
+            // Rebuild Dock cache only when the installed app list changes.
+            dockAppsCache = getDockApps()
+
             invalidate()
         }
 
@@ -243,39 +261,47 @@ class MainActivity : Activity() {
         // WALLPAPER
         // -----------------------------------------
 
-        private fun drawWallpaper(
-            canvas: Canvas
-        ) {
+        private fun prepareWallpaperShaders() {
+            val w = width
+            val h = height
 
-            val w = width.toFloat()
-            val h = height.toFloat()
+            if (w <= 0 || h <= 0) {
+                return
+            }
 
-            val gradient =
+            if (
+                wallpaperWidth == w &&
+                wallpaperHeight == h &&
+                wallpaperGradient != null &&
+                wallpaperGlow1 != null &&
+                wallpaperGlow2 != null &&
+                wallpaperGlow3 != null
+            ) {
+                return
+            }
+
+            wallpaperWidth = w
+            wallpaperHeight = h
+
+            val wf = w.toFloat()
+            val hf = h.toFloat()
+
+            wallpaperGradient =
                 LinearGradient(
                     0f,
                     0f,
-                    w,
-                    h,
+                    wf,
+                    hf,
                     Color.rgb(20, 42, 82),
                     Color.rgb(4, 7, 18),
                     Shader.TileMode.CLAMP
                 )
 
-            bgPaint.shader = gradient
-
-            canvas.drawRect(
-                0f,
-                0f,
-                w,
-                h,
-                bgPaint
-            )
-
-            val glow1 =
+            wallpaperGlow1 =
                 RadialGradient(
-                    w * 0.22f,
-                    h * 0.12f,
-                    w * 0.7f,
+                    wf * 0.22f,
+                    hf * 0.12f,
+                    wf * 0.7f,
                     Color.argb(
                         180,
                         80,
@@ -286,20 +312,11 @@ class MainActivity : Activity() {
                     Shader.TileMode.CLAMP
                 )
 
-            bgPaint.shader = glow1
-
-            canvas.drawCircle(
-                w * 0.22f,
-                h * 0.12f,
-                w * 0.7f,
-                bgPaint
-            )
-
-            val glow2 =
+            wallpaperGlow2 =
                 RadialGradient(
-                    w * 0.85f,
-                    h * 0.68f,
-                    w * 0.62f,
+                    wf * 0.85f,
+                    hf * 0.68f,
+                    wf * 0.62f,
                     Color.argb(
                         130,
                         180,
@@ -310,20 +327,11 @@ class MainActivity : Activity() {
                     Shader.TileMode.CLAMP
                 )
 
-            bgPaint.shader = glow2
-
-            canvas.drawCircle(
-                w * 0.85f,
-                h * 0.68f,
-                w * 0.62f,
-                bgPaint
-            )
-
-            val glow3 =
+            wallpaperGlow3 =
                 RadialGradient(
-                    w * 0.35f,
-                    h * 0.95f,
-                    w * 0.5f,
+                    wf * 0.35f,
+                    hf * 0.95f,
+                    wf * 0.5f,
                     Color.argb(
                         90,
                         40,
@@ -333,15 +341,74 @@ class MainActivity : Activity() {
                     Color.TRANSPARENT,
                     Shader.TileMode.CLAMP
                 )
+        }
 
-            bgPaint.shader = glow3
+        override fun onSizeChanged(
+            w: Int,
+            h: Int,
+            oldw: Int,
+            oldh: Int
+        ) {
+            super.onSizeChanged(w, h, oldw, oldh)
 
-            canvas.drawCircle(
-                w * 0.35f,
-                h * 0.95f,
-                w * 0.5f,
-                bgPaint
-            )
+            wallpaperWidth = 0
+            wallpaperHeight = 0
+
+            prepareWallpaperShaders()
+        }
+
+        private fun drawWallpaper(
+            canvas: Canvas
+        ) {
+            prepareWallpaperShaders()
+
+            val w = width.toFloat()
+            val h = height.toFloat()
+
+            wallpaperGradient?.let {
+                bgPaint.shader = it
+
+                canvas.drawRect(
+                    0f,
+                    0f,
+                    w,
+                    h,
+                    bgPaint
+                )
+            }
+
+            wallpaperGlow1?.let {
+                bgPaint.shader = it
+
+                canvas.drawCircle(
+                    w * 0.22f,
+                    h * 0.12f,
+                    w * 0.7f,
+                    bgPaint
+                )
+            }
+
+            wallpaperGlow2?.let {
+                bgPaint.shader = it
+
+                canvas.drawCircle(
+                    w * 0.85f,
+                    h * 0.68f,
+                    w * 0.62f,
+                    bgPaint
+                )
+            }
+
+            wallpaperGlow3?.let {
+                bgPaint.shader = it
+
+                canvas.drawCircle(
+                    w * 0.35f,
+                    h * 0.95f,
+                    w * 0.5f,
+                    bgPaint
+                )
+            }
 
             bgPaint.shader = null
         }
@@ -669,8 +736,8 @@ class MainActivity : Activity() {
             glassPaint
         )
 
-        val apps = getDockApps()
-        val count = min(4, apps.size)
+        val dockApps = dockAppsCache
+        val count = min(4, dockApps.size)
 
         if (count > 0) {
             val slot = (right - left) / count
@@ -681,7 +748,7 @@ class MainActivity : Activity() {
 
                 drawApp(
                     canvas,
-                    apps[i],
+                    dockApps[i],
                     cx,
                     cy
                 )
@@ -1905,6 +1972,23 @@ class MainActivity : Activity() {
 
             } catch (_: Exception) {
             }
+        }
+
+        override fun onDetachedFromWindow() {
+            pageAnimator.cancel()
+            pressAnimator.cancel()
+            ccAnimator?.cancel()
+            ccAnimator = null
+
+            wallpaperGradient = null
+            wallpaperGlow1 = null
+            wallpaperGlow2 = null
+            wallpaperGlow3 = null
+
+            wallpaperWidth = 0
+            wallpaperHeight = 0
+
+            super.onDetachedFromWindow()
         }
 
         private fun dp(
