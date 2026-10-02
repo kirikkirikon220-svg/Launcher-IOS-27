@@ -235,8 +235,16 @@ class MainActivity : Activity() {
         private var pageOffset = 0f
 
         private var controlCenter = false
-    private var controlCenterProgress = 0f
-    private var ccAnimator: ValueAnimator? = null
+
+        private var controlCenterProgress = 0f
+
+        private var ccAnimator: ValueAnimator? = null
+
+        // IOS27_CONTROL_CENTER_INTERACTIVE_V7
+        //
+        // true  = progress напрямую следует за пальцем.
+        // false = используется самостоятельная settle-анимация.
+        private var controlCenterInteractive = false
         private var searchMode = false
         private var editMode = false
 
@@ -391,7 +399,20 @@ class MainActivity : Activity() {
 
             drawHome(canvas)
 
-            if (controlCenter) {
+            // IOS27_CONTROL_CENTER_GESTURE_V7
+            //
+            // Важно:
+            // Control Center должен рисоваться уже во время
+            // самого свайпа, даже когда controlCenter == false.
+            //
+            // Иначе пользователь двигает палец, progress меняется,
+            // но визуально ничего не происходит, а после отпускания
+            // панель сразу появляется почти полностью открытой.
+
+            if (
+                controlCenter ||
+                controlCenterProgress > 0f
+            ) {
 
                 drawControlCenter(canvas)
             }
@@ -1262,11 +1283,25 @@ class MainActivity : Activity() {
         val h =
             height.toFloat()
 
+        // IOS27_CONTROL_CENTER_GESTURE_V7
+        //
+        // При движении пальца НИКАКОГО дополнительного easing:
+        // 30% движения пальца = примерно 30% открытия панели.
+        //
+        // После отпускания включается отдельная плавная easing-анимация.
+
         val eased =
-            1f -
-            (1f - p) *
-            (1f - p) *
-            (1f - p)
+            if (controlCenterInteractive) {
+
+                p
+
+            } else {
+
+                1f -
+                (1f - p) *
+                (1f - p) *
+                (1f - p)
+            }
 
         // -----------------------------------------
         // BACKDROP
@@ -1850,26 +1885,33 @@ class MainActivity : Activity() {
 
         private fun openControlCenter() {
 
-        // IOS27_CONTROL_CENTER_ANIMATION_V5
+        // IOS27_CONTROL_CENTER_ANIMATION_V7
 
         controlCenter = true
         controlCenterGesture = false
+        controlCenterInteractive = false
 
         ccAnimator?.cancel()
 
+        val startProgress =
+            controlCenterProgress.coerceIn(0f, 1f)
+
         ccAnimator =
             ValueAnimator.ofFloat(
-                controlCenterProgress,
+                startProgress,
                 1f
             ).apply {
 
-                duration = 330L
+                // iOS-like settle:
+                // быстрое движение в начале +
+                // мягкое замедление в конце.
+                duration = 420L
 
                 interpolator =
                     PathInterpolator(
                         0.16f,
                         1f,
-                        0.3f,
+                        0.30f,
                         1f
                     )
 
@@ -1888,26 +1930,30 @@ class MainActivity : Activity() {
 
         private fun closeControlCenter() {
 
-        // IOS27_CONTROL_CENTER_ANIMATION_V5
+        // IOS27_CONTROL_CENTER_ANIMATION_V7
 
         controlCenterGesture = false
+        controlCenterInteractive = false
 
         ccAnimator?.cancel()
 
+        val startProgress =
+            controlCenterProgress.coerceIn(0f, 1f)
+
         ccAnimator =
             ValueAnimator.ofFloat(
-                controlCenterProgress,
+                startProgress,
                 0f
             ).apply {
 
-                duration = 260L
+                duration = 300L
 
                 interpolator =
                     PathInterpolator(
                         0.55f,
                         0f,
-                        0.8f,
-                        0.2f
+                        0.85f,
+                        0.25f
                     )
 
                 addUpdateListener {
@@ -1921,6 +1967,7 @@ class MainActivity : Activity() {
 
                         controlCenterProgress = 0f
                         controlCenter = false
+                        controlCenterInteractive = false
                     }
 
                     invalidate()
@@ -1953,9 +2000,12 @@ class MainActivity : Activity() {
                 if (controlCenter) {
 
                     controlCenterGesture = true
+                    controlCenterInteractive = true
 
                     controlCenterStartY = y
                     controlCenterStartX = x
+
+                    ccAnimator?.cancel()
 
                     pressedIndex = -1
                     pressedScale = 1f
@@ -2008,17 +2058,14 @@ class MainActivity : Activity() {
 
                     dragging = true
 
-                    // IOS27_CONTROL_CENTER_GESTURE_V6
+                    // IOS27_CONTROL_CENTER_GESTURE_V7
                     //
-                    // Во время открытия НЕ переводим controlCenter
-                    // в true. Иначе следующий ACTION_MOVE попадает
-                    // в ветку уже открытого Control Center и панель
-                    // мгновенно прыгает к 100%.
-                    //
-                    // Пока палец движется вниз, progress напрямую
-                    // следует за пальцем.
+                    // Настоящее интерактивное открытие.
+                    // Панель видна уже с первых пикселей свайпа.
+                    // controlCenter остаётся false до момента
+                    // завершения жеста.
 
-                    dragging = true
+                    controlCenterInteractive = true
 
                     ccAnimator?.cancel()
 
@@ -2039,7 +2086,13 @@ class MainActivity : Activity() {
                     val closeDistance =
                         controlCenterStartY - y
 
-                    // Свайп вверх.
+                    // Как только пользователь начинает двигать
+                    // открытый Control Center, управление снова
+                    // передаётся пальцу.
+
+                    controlCenterInteractive = true
+
+                    // Свайп вверх — закрытие.
                     if (closeDistance > 0f) {
 
                         controlCenterProgress =
@@ -2129,6 +2182,12 @@ class MainActivity : Activity() {
 
                     controlCenterGesture = false
 
+                    // Заканчиваем интерактивный режим.
+                    // Дальше панель сама плавно доедет
+                    // до конечного состояния.
+
+                    controlCenterInteractive = false
+
                     if (shouldOpen) {
                         openControlCenter()
                     } else {
@@ -2189,6 +2248,7 @@ class MainActivity : Activity() {
                 pressedScale = 1f
 
                 controlCenterGesture = false
+                controlCenterInteractive = false
 
                 if (
                     controlCenter ||
