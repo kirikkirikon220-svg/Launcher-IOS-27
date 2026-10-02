@@ -246,6 +246,14 @@ class MainActivity : Activity() {
 
         private var ccAnimator: ValueAnimator? = null
 
+        // =================================================
+        // IOS27_NAVIGATION_BAR_PHYSICS_V12
+        // =================================================
+
+        private var navigationBarSpringScale = 1f
+
+        private var navigationBarAnimator: ValueAnimator? = null
+
         // IOS27_CONTROL_CENTER_INTERACTIVE_V7
         //
         // true  = progress напрямую следует за пальцем.
@@ -850,15 +858,13 @@ class MainActivity : Activity() {
             invalidate()
         }
 
+
         override fun onDraw(canvas: Canvas) {
 
             super.onDraw(canvas)
 
             drawWallpaper(canvas)
 
-            // IOS27_STATUS_BAR_LIQUID_V8_FIXED
-            // Верхние индикаторы являются частью
-            // интерактивного перехода в Control Center.
             drawIOSStatusIndicators(canvas)
 
             if (searchMode) {
@@ -870,16 +876,6 @@ class MainActivity : Activity() {
 
             drawHome(canvas)
 
-            // IOS27_CONTROL_CENTER_GESTURE_V7
-            //
-            // Важно:
-            // Control Center должен рисоваться уже во время
-            // самого свайпа, даже когда controlCenter == false.
-            //
-            // Иначе пользователь двигает палец, progress меняется,
-            // но визуально ничего не происходит, а после отпускания
-            // панель сразу появляется почти полностью открытой.
-
             if (
                 controlCenter ||
                 controlCenterProgress > 0f
@@ -887,7 +883,15 @@ class MainActivity : Activity() {
 
                 drawControlCenter(canvas)
             }
+
+            // IOS27_NAVIGATION_BAR_TOP_LAYER_V12
+            //
+            // Home Indicator рисуется ПОСЛЕ Control Center.
+            // Поэтому остаётся поверх Liquid Glass панели.
+
+            drawNavigationHomeIndicator(canvas)
         }
+
 
         // -----------------------------------------
         // WALLPAPER
@@ -1342,49 +1346,167 @@ class MainActivity : Activity() {
         // -----------------------------------------
 
 
+
     private fun drawDock(canvas: Canvas) {
-        val margin = dp(12f)
-        val dockHeight = dp(82f)
 
-        val top = height - dp(103f)
-        val left = margin
-        val right = width - margin
-        val bottom = top + dockHeight
+        // =================================================
+        // IOS27_DOCK_PHYSICS_V12
+        // =================================================
 
-        glassPaint.style = Paint.Style.FILL
-        glassPaint.color = Color.argb(105, 255, 255, 255)
+        val rawProgress =
+            controlCenterProgress
+                .coerceIn(0f, 1f)
+
+        val physicsProgress =
+            if (controlCenterInteractive) {
+
+                rawProgress
+
+            } else {
+
+                rawProgress *
+                    rawProgress *
+                    (3f - 2f * rawProgress)
+            }
+
+        val margin =
+            dp(12f)
+
+        val dockHeight =
+            dp(82f)
+
+        val baseTop =
+            height - dp(103f)
+
+        val left =
+            margin
+
+        val right =
+            width - margin
+
+        val baseBottom =
+            baseTop + dockHeight
+
+        val centerX =
+            (left + right) / 2f
+
+        val centerY =
+            (baseTop + baseBottom) / 2f
+
+        // Лёгкое движение вниз.
+        val translationY =
+            dp(5f) *
+            physicsProgress
+
+        // Лёгкое сжатие Dock.
+        val dockScale =
+            1f -
+            0.014f *
+            physicsProgress
+
+        // Уменьшаем визуальную выраженность.
+        val dockAlpha =
+            (
+                1f -
+                0.30f *
+                physicsProgress
+            )
+                .coerceIn(
+                    0.65f,
+                    1f
+                )
+
+        canvas.save()
+
+        canvas.translate(
+            centerX,
+            centerY + translationY
+        )
+
+        canvas.scale(
+            dockScale,
+            dockScale
+        )
+
+        canvas.translate(
+            -centerX,
+            -centerY
+        )
+
+        glassPaint.style =
+            Paint.Style.FILL
+
+        glassPaint.color =
+            Color.argb(
+                (105f * dockAlpha)
+                    .toInt()
+                    .coerceIn(
+                        0,
+                        255
+                    ),
+                255,
+                255,
+                255
+            )
 
         canvas.drawRoundRect(
             left,
-            top,
+            baseTop,
             right,
-            bottom,
+            baseBottom,
             dp(27f),
             dp(27f),
             glassPaint
         )
 
-        glassPaint.color = Color.argb(55, 255, 255, 255)
+        glassPaint.color =
+            Color.argb(
+                (55f * dockAlpha)
+                    .toInt()
+                    .coerceIn(
+                        0,
+                        255
+                    ),
+                255,
+                255,
+                255
+            )
 
         canvas.drawRoundRect(
             left + dp(1f),
-            top + dp(1f),
+            baseTop + dp(1f),
             right - dp(1f),
-            top + dp(25f),
+            baseTop + dp(25f),
             dp(26f),
             dp(26f),
             glassPaint
         )
 
-        val dockApps = dockAppsCache
-        val count = min(4, dockApps.size)
+        val dockApps =
+            dockAppsCache
+
+        val count =
+            min(
+                4,
+                dockApps.size
+            )
 
         if (count > 0) {
-            val slot = (right - left) / count
+
+            val slot =
+                (right - left) /
+                    count
 
             for (i in 0 until count) {
-                val cx = left + slot * i + slot / 2f
-                val cy = top + dockHeight / 2f
+
+                val cx =
+                    left +
+                    slot * i +
+                    slot / 2f
+
+                val cy =
+                    baseTop +
+                    dockHeight / 2f
 
                 drawApp(
                     canvas,
@@ -1394,7 +1516,190 @@ class MainActivity : Activity() {
                 )
             }
         }
+
+        canvas.restore()
     }
+
+        // =================================================
+        // IOS27_HOME_INDICATOR_V12
+        // =================================================
+
+        private fun drawNavigationHomeIndicator(
+            canvas: Canvas
+        ) {
+
+            val progress =
+                controlCenterProgress
+                    .coerceIn(
+                        0f,
+                        1f
+                    )
+
+            val interactiveScale =
+                if (controlCenterInteractive) {
+
+                    1f +
+                    0.10f *
+                    progress
+
+                } else {
+
+                    navigationBarSpringScale
+                }
+
+            val baseWidth =
+                dp(134f)
+
+            val baseHeight =
+                dp(5f)
+
+            val indicatorWidth =
+                baseWidth *
+                interactiveScale
+
+            val stretch =
+                (
+                    interactiveScale -
+                    1f
+                )
+                    .coerceIn(
+                        -0.15f,
+                        0.20f
+                    )
+
+            val indicatorHeight =
+                baseHeight *
+                (
+                    1f -
+                    0.22f *
+                    stretch
+                )
+
+            val cx =
+                width / 2f
+
+            val baseY =
+                height -
+                dp(9f)
+
+            val indicatorY =
+                baseY -
+                dp(1.5f) *
+                progress
+
+            val left =
+                cx -
+                indicatorWidth / 2f
+
+            val right =
+                cx +
+                indicatorWidth / 2f
+
+            val top =
+                indicatorY -
+                indicatorHeight
+
+            val bottom =
+                indicatorY
+
+            val alpha =
+                (
+                    235f -
+                    20f *
+                    progress
+                )
+                    .toInt()
+                    .coerceIn(
+                        0,
+                        255
+                    )
+
+            glassPaint.style =
+                Paint.Style.FILL
+
+            glassPaint.color =
+                Color.argb(
+                    alpha,
+                    255,
+                    255,
+                    255
+                )
+
+            canvas.drawRoundRect(
+                left,
+                top,
+                right,
+                bottom,
+                indicatorHeight / 2f,
+                indicatorHeight / 2f,
+                glassPaint
+            )
+        }
+
+        // =================================================
+        // IOS27_NAVIGATION_BAR_SPRING_V12
+        // =================================================
+
+        private fun animateNavigationBarSpring(
+            opening: Boolean
+        ) {
+
+            navigationBarAnimator?.cancel()
+
+            val values =
+                if (opening) {
+
+                    floatArrayOf(
+                        1f,
+                        1.13f,
+                        0.985f,
+                        1f
+                    )
+
+                } else {
+
+                    floatArrayOf(
+                        1f,
+                        0.88f,
+                        1.035f,
+                        1f
+                    )
+                }
+
+            navigationBarAnimator =
+                ValueAnimator.ofFloat(
+                    *values
+                ).apply {
+
+                    duration =
+                        if (opening) {
+                            430L
+                        } else {
+                            320L
+                        }
+
+                    interpolator =
+                        PathInterpolator(
+                            0.16f,
+                            1f,
+                            0.30f,
+                            1f
+                        )
+
+                    addUpdateListener {
+
+                        navigationBarSpringScale =
+                            it.animatedValue
+                                as Float
+
+                        invalidate()
+                    }
+
+                    start()
+                }
+        }
+
+
 
         private fun getDockApps(): List<AppItem> {
 
@@ -2448,6 +2753,13 @@ class MainActivity : Activity() {
         controlCenterGesture = false
         controlCenterInteractive = false
 
+
+        // IOS27_NAVIGATION_BAR_OPEN_SPRING_V12
+
+        animateNavigationBarSpring(
+            opening = true
+        )
+
         ccAnimator?.cancel()
 
         val startProgress =
@@ -2492,6 +2804,13 @@ class MainActivity : Activity() {
 
         controlCenterGesture = false
         controlCenterInteractive = false
+
+
+        // IOS27_NAVIGATION_BAR_CLOSE_SPRING_V12
+
+        animateNavigationBarSpring(
+            opening = false
+        )
 
         ccAnimator?.cancel()
 
@@ -2626,6 +2945,15 @@ class MainActivity : Activity() {
                     // завершения жеста.
 
                     controlCenterInteractive = true
+
+                    // IOS27_NAVIGATION_BAR_INTERACTIVE_V12
+                    //
+                    // Пока пальцем управляется Control Center,
+                    // spring не должен бороться с жестом.
+
+                    navigationBarAnimator?.cancel()
+
+                    navigationBarSpringScale = 1f
 
                     ccAnimator?.cancel()
 
@@ -3041,6 +3369,9 @@ class MainActivity : Activity() {
             pressAnimator.cancel()
             ccAnimator?.cancel()
             ccAnimator = null
+
+            navigationBarAnimator?.cancel()
+            navigationBarAnimator = null
 
             wallpaperGradient = null
             wallpaperGlow1 = null
