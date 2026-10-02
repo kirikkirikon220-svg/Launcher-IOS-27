@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.*
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
@@ -1233,32 +1234,51 @@ class MainActivity : Activity() {
         // -----------------------------------------
 
 
-    private fun drawControlCenter(canvas: Canvas) {
+        private fun drawControlCenter(canvas: Canvas) {
 
-        val p = controlCenterProgress.coerceIn(0f, 1f)
+        // IOS27_CONTROL_CENTER_VISUAL_V5
+        //
+        // Панель выходит СВЕРХУ вниз.
+        // Движение пальца напрямую управляет progress.
+        // После отпускания open/close анимируется отдельно.
+        //
+        // Визуально:
+        // - затемнение появляется постепенно;
+        // - вся панель приезжает сверху;
+        // - panel scale/alpha идут вместе с движением;
+        // - glass surfaces остаются прозрачными;
+        // - блоки имеют лёгкий stagger.
+
+        val p =
+            controlCenterProgress.coerceIn(0f, 1f)
 
         if (p <= 0f) {
             return
         }
 
-        val w = width.toFloat()
-        val h = height.toFloat()
+        val w =
+            width.toFloat()
 
-        // IOS27_CONTROL_CENTER_VISUAL_V4
-        //
-        // Панель появляется сверху вниз.
-        // Во время свайпа её положение напрямую
-        // связано с движением пальца.
+        val h =
+            height.toFloat()
 
         val eased =
-            1f - (1f - p) * (1f - p)
+            1f -
+            (1f - p) *
+            (1f - p) *
+            (1f - p)
 
-        bgPaint.color = Color.argb(
-            (95f * eased).toInt().coerceIn(0, 255),
-            0,
-            0,
-            0
-        )
+        // -----------------------------------------
+        // BACKDROP
+        // -----------------------------------------
+
+        bgPaint.color =
+            Color.argb(
+                (105f * eased).toInt(),
+                0,
+                0,
+                0
+            )
 
         canvas.drawRect(
             0f,
@@ -1268,35 +1288,101 @@ class MainActivity : Activity() {
             bgPaint
         )
 
-        val slideOffset =
-            -h * 0.035f * (1f - eased)
+        // -----------------------------------------
+        // PANEL GEOMETRY
+        // -----------------------------------------
 
-        canvas.save()
+        val margin =
+            dp(14f)
 
-        canvas.translate(
-            0f,
-            slideOffset
-        )
+        val top =
+            dp(18f)
 
-        val margin = dp(14f)
-        val top = dp(18f)
-        val gap = dp(10f)
+        val gap =
+            dp(10f)
 
         val groupWidth =
             (w - margin * 2f - gap) / 2f
 
-        val groupHeight = dp(118f)
+        val groupHeight =
+            dp(118f)
 
-        // Connectivity
+        val sliderHeight =
+            dp(58f)
 
-        glassPaint.style = Paint.Style.FILL
+        val sliderGap =
+            dp(10f)
 
-        glassPaint.color = Color.argb(
-            (210f * eased).toInt(),
-            235,
-            235,
-            242
+        val bottomControlsTop =
+            top +
+            groupHeight +
+            gap +
+            sliderHeight +
+            sliderGap +
+            sliderHeight +
+            dp(20f)
+
+        val panelHeight =
+            bottomControlsTop +
+            dp(78f) -
+            top +
+            dp(18f)
+
+        // -----------------------------------------
+        // TOP-DOWN MOTION
+        // -----------------------------------------
+
+        val slideY =
+            -panelHeight *
+            (1f - eased)
+
+        val scale =
+            0.965f +
+            0.035f * eased
+
+        val panelAlpha =
+            (255f * eased)
+                .toInt()
+                .coerceIn(0, 255)
+
+        val centerX =
+            w / 2f
+
+        val centerY =
+            top +
+            panelHeight / 2f
+
+        canvas.save()
+
+        canvas.translate(
+            centerX,
+            centerY + slideY
         )
+
+        canvas.scale(
+            scale,
+            scale
+        )
+
+        canvas.translate(
+            -centerX,
+            -centerY
+        )
+
+        // -----------------------------------------
+        // CONNECTIVITY GLASS
+        // -----------------------------------------
+
+        glassPaint.style =
+            Paint.Style.FILL
+
+        glassPaint.color =
+            Color.argb(
+                (92f * eased).toInt(),
+                245,
+                248,
+                255
+            )
 
         canvas.drawRoundRect(
             margin,
@@ -1305,6 +1391,24 @@ class MainActivity : Activity() {
             top + groupHeight,
             dp(28f),
             dp(28f),
+            glassPaint
+        )
+
+        glassPaint.color =
+            Color.argb(
+                (36f * eased).toInt(),
+                255,
+                255,
+                255
+            )
+
+        canvas.drawRoundRect(
+            margin + dp(1f),
+            top + dp(1f),
+            margin + groupWidth - dp(1f),
+            top + dp(31f),
+            dp(27f),
+            dp(27f),
             glassPaint
         )
 
@@ -1344,17 +1448,22 @@ class MainActivity : Activity() {
             false
         )
 
-        // Media
+        // -----------------------------------------
+        // MEDIA GLASS
+        // -----------------------------------------
 
         val mediaLeft =
-            margin + groupWidth + gap
+            margin +
+            groupWidth +
+            gap
 
-        glassPaint.color = Color.argb(
-            (210f * eased).toInt(),
-            235,
-            235,
-            242
-        )
+        glassPaint.color =
+            Color.argb(
+                (92f * eased).toInt(),
+                245,
+                248,
+                255
+            )
 
         canvas.drawRoundRect(
             mediaLeft,
@@ -1366,9 +1475,35 @@ class MainActivity : Activity() {
             glassPaint
         )
 
-        textPaint.color = Color.DKGRAY
-        textPaint.textSize = dp(12f)
-        textPaint.typeface = Typeface.DEFAULT_BOLD
+        glassPaint.color =
+            Color.argb(
+                (30f * eased).toInt(),
+                255,
+                255,
+                255
+            )
+
+        canvas.drawRoundRect(
+            mediaLeft + dp(1f),
+            top + dp(1f),
+            mediaLeft + groupWidth - dp(1f),
+            top + dp(31f),
+            dp(27f),
+            dp(27f),
+            glassPaint
+        )
+
+        textPaint.alpha =
+            panelAlpha
+
+        textPaint.color =
+            Color.WHITE
+
+        textPaint.textSize =
+            dp(12f)
+
+        textPaint.typeface =
+            Typeface.DEFAULT_BOLD
 
         canvas.drawText(
             "Сейчас играет",
@@ -1377,8 +1512,8 @@ class MainActivity : Activity() {
             textPaint
         )
 
-        textPaint.color = Color.BLACK
-        textPaint.textSize = dp(18f)
+        textPaint.textSize =
+            dp(18f)
 
         canvas.drawText(
             "Музыка",
@@ -1387,9 +1522,19 @@ class MainActivity : Activity() {
             textPaint
         )
 
-        textPaint.color = Color.DKGRAY
-        textPaint.textSize = dp(11f)
-        textPaint.typeface = Typeface.DEFAULT
+        textPaint.color =
+            Color.argb(
+                (190f * eased).toInt(),
+                255,
+                255,
+                255
+            )
+
+        textPaint.textSize =
+            dp(11f)
+
+        textPaint.typeface =
+            Typeface.DEFAULT
 
         canvas.drawText(
             "Ничего не воспроизводится",
@@ -1407,38 +1552,48 @@ class MainActivity : Activity() {
             false
         )
 
-        // Brightness
+        // -----------------------------------------
+        // SLIDERS
+        // -----------------------------------------
 
         val sliderY =
-            top + groupHeight + gap
+            top +
+            groupHeight +
+            gap
 
         drawCCSlider(
             canvas,
             margin,
             sliderY,
             w - margin * 2f,
-            dp(58f),
+            sliderHeight,
             "☀"
         )
-
-        // Volume
 
         drawCCSlider(
             canvas,
             margin,
-            sliderY + dp(68f),
+            sliderY +
+                sliderHeight +
+                sliderGap,
             w - margin * 2f,
-            dp(58f),
+            sliderHeight,
             "♪"
         )
 
-        // Bottom controls
+        // -----------------------------------------
+        // BOTTOM CONTROLS
+        // -----------------------------------------
 
         val smallY =
-            sliderY + dp(138f)
+            bottomControlsTop
 
         val smallWidth =
-            (w - margin * 2f - dp(30f)) / 4f
+            (
+                w -
+                margin * 2f -
+                dp(30f)
+            ) / 4f
 
         drawCCSmall(
             canvas,
@@ -1450,7 +1605,9 @@ class MainActivity : Activity() {
 
         drawCCSmall(
             canvas,
-            margin + smallWidth + dp(10f),
+            margin +
+                smallWidth +
+                dp(10f),
             smallY,
             smallWidth,
             "Камера"
@@ -1458,7 +1615,8 @@ class MainActivity : Activity() {
 
         drawCCSmall(
             canvas,
-            margin + (smallWidth + dp(10f)) * 2f,
+            margin +
+                (smallWidth + dp(10f)) * 2f,
             smallY,
             smallWidth,
             "QR"
@@ -1466,14 +1624,18 @@ class MainActivity : Activity() {
 
         drawCCSmall(
             canvas,
-            margin + (smallWidth + dp(10f)) * 3f,
+            margin +
+                (smallWidth + dp(10f)) * 3f,
             smallY,
             smallWidth,
             "+"
         )
 
+        textPaint.alpha = 255
+
         canvas.restore()
     }
+
 
     private fun drawCCCircle(
         canvas: Canvas,
@@ -1686,9 +1848,9 @@ class MainActivity : Activity() {
 
         // -----------------------------------------
 
-    private fun openControlCenter() {
+        private fun openControlCenter() {
 
-        // IOS27_CONTROL_CENTER_ANIMATION_V4
+        // IOS27_CONTROL_CENTER_ANIMATION_V5
 
         controlCenter = true
         controlCenterGesture = false
@@ -1701,10 +1863,15 @@ class MainActivity : Activity() {
                 1f
             ).apply {
 
-                duration = 260L
+                duration = 330L
 
                 interpolator =
-                    DecelerateInterpolator(1.35f)
+                    PathInterpolator(
+                        0.16f,
+                        1f,
+                        0.3f,
+                        1f
+                    )
 
                 addUpdateListener {
 
@@ -1718,9 +1885,10 @@ class MainActivity : Activity() {
             }
     }
 
-    private fun closeControlCenter() {
 
-        // IOS27_CONTROL_CENTER_ANIMATION_V4
+        private fun closeControlCenter() {
+
+        // IOS27_CONTROL_CENTER_ANIMATION_V5
 
         controlCenterGesture = false
 
@@ -1732,10 +1900,15 @@ class MainActivity : Activity() {
                 0f
             ).apply {
 
-                duration = 220L
+                duration = 260L
 
                 interpolator =
-                    DecelerateInterpolator(1.45f)
+                    PathInterpolator(
+                        0.55f,
+                        0f,
+                        0.8f,
+                        0.2f
+                    )
 
                 addUpdateListener {
 
@@ -1743,7 +1916,7 @@ class MainActivity : Activity() {
                         it.animatedValue as Float
 
                     if (
-                        controlCenterProgress <= 0.01f
+                        controlCenterProgress <= 0.005f
                     ) {
 
                         controlCenterProgress = 0f
@@ -1756,6 +1929,7 @@ class MainActivity : Activity() {
                 start()
             }
     }
+
 
     // TOUCH
     // -----------------------------------------
@@ -1840,7 +2014,7 @@ class MainActivity : Activity() {
 
                     controlCenterProgress =
                         (
-                            dy / dp(300f)
+                            dy / dp(360f)
                         ).coerceIn(0f, 1f)
 
                     invalidate()
