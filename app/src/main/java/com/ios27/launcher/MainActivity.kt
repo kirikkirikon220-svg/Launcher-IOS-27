@@ -177,11 +177,102 @@ class MainActivity : Activity() {
 
         setContentView(launcherView)
 
+        // IOS27_NAVIGATION_SYSTEM_REPLACEMENT_V13
+        configureIOS27NavigationBar()
+
         launcherView.startHomeAnimation()
     }
 
+    // ========================================================
+    // IOS27_NAVIGATION_SYSTEM_REPLACEMENT_V13
+    // ========================================================
+    //
+    // В V12 приложение рисовало собственный Home Indicator,
+    // но системная Android navigation bar всё ещё оставалась
+    // активной.
+    //
+    // Поэтому пользователь видел старую системную анимацию.
+    //
+    // V13 полностью скрывает системную navigation bar.
+    // После этого нижний индикатор рисует только Launcher.
+    //
+
+    private fun configureIOS27NavigationBar() {
+
+        try {
+
+            window.navigationBarColor =
+                Color.TRANSPARENT
+
+            if (
+                android.os.Build.VERSION.SDK_INT >=
+                android.os.Build.VERSION_CODES.Q
+            ) {
+
+                window.isNavigationBarContrastEnforced =
+                    false
+
+                window.navigationBarDividerColor =
+                    Color.TRANSPARENT
+            }
+
+            val flags =
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+
+            window.decorView.systemUiVisibility =
+                flags
+
+            if (
+                android.os.Build.VERSION.SDK_INT >=
+                android.os.Build.VERSION_CODES.R
+            ) {
+
+                window.setDecorFitsSystemWindows(
+                    false
+                )
+
+                val controller =
+                    window.insetsController
+
+                if (controller != null) {
+
+                    controller.hide(
+                        android.view.WindowInsets.Type.navigationBars()
+                    )
+
+                    controller.systemBarsBehavior =
+                        android.view.WindowInsetsController
+                            .BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
+
+        } catch (_: Throwable) {
+        }
+    }
+
+    override fun onWindowFocusChanged(
+        hasFocus: Boolean
+    ) {
+
+        super.onWindowFocusChanged(
+            hasFocus
+        )
+
+        if (hasFocus) {
+
+            configureIOS27NavigationBar()
+        }
+    }
+
+
     override fun onResume() {
         super.onResume()
+
+        configureIOS27NavigationBar()
 
         if (::launcherView.isInitialized) {
             launcherView.reloadApps()
@@ -1524,9 +1615,14 @@ class MainActivity : Activity() {
         // IOS27_HOME_INDICATOR_V12
         // =================================================
 
+
         private fun drawNavigationHomeIndicator(
             canvas: Canvas
         ) {
+
+            // ========================================================
+            // IOS27_HOME_INDICATOR_PHYSICS_V13
+            // ========================================================
 
             val progress =
                 controlCenterProgress
@@ -1535,11 +1631,16 @@ class MainActivity : Activity() {
                         1f
                     )
 
+            // Во время пальца индикатор следует
+            // непосредственно за жестом.
+            //
+            // После отпускания используется spring.
+
             val interactiveScale =
                 if (controlCenterInteractive) {
 
                     1f +
-                    0.10f *
+                    0.22f *
                     progress
 
                 } else {
@@ -1547,15 +1648,22 @@ class MainActivity : Activity() {
                     navigationBarSpringScale
                 }
 
+
+            // --------------------------------------------------------
+            // WIDTH
+            // --------------------------------------------------------
+
             val baseWidth =
                 dp(134f)
-
-            val baseHeight =
-                dp(5f)
 
             val indicatorWidth =
                 baseWidth *
                 interactiveScale
+
+
+            // --------------------------------------------------------
+            // HEIGHT / SQUASH
+            // --------------------------------------------------------
 
             val stretch =
                 (
@@ -1563,29 +1671,39 @@ class MainActivity : Activity() {
                     1f
                 )
                     .coerceIn(
-                        -0.15f,
-                        0.20f
+                        -0.25f,
+                        0.30f
                     )
 
             val indicatorHeight =
-                baseHeight *
+                dp(5.5f) *
                 (
                     1f -
-                    0.22f *
+                    0.28f *
                     stretch
                 )
 
-            val cx =
-                width / 2f
+
+            // --------------------------------------------------------
+            // VERTICAL MOVEMENT
+            // --------------------------------------------------------
 
             val baseY =
                 height -
-                dp(9f)
+                dp(10f)
 
             val indicatorY =
                 baseY -
-                dp(1.5f) *
+                dp(5f) *
                 progress
+
+
+            // --------------------------------------------------------
+            // HORIZONTAL
+            // --------------------------------------------------------
+
+            val cx =
+                width / 2f
 
             val left =
                 cx -
@@ -1602,24 +1720,62 @@ class MainActivity : Activity() {
             val bottom =
                 indicatorY
 
-            val alpha =
-                (
-                    235f -
-                    20f *
-                    progress
+
+            // --------------------------------------------------------
+            // SHADOW / GLOW
+            // --------------------------------------------------------
+
+            shadowPaint.style =
+                Paint.Style.FILL
+
+            shadowPaint.color =
+                Color.argb(
+                    75,
+                    0,
+                    0,
+                    0
                 )
-                    .toInt()
-                    .coerceIn(
-                        0,
-                        255
-                    )
+
+            shadowPaint.setShadowLayer(
+                dp(3f),
+                0f,
+                dp(1f),
+                Color.argb(
+                    100,
+                    0,
+                    0,
+                    0
+                )
+            )
+
+            setLayerType(
+                View.LAYER_TYPE_SOFTWARE,
+                shadowPaint
+            )
+
+            canvas.drawRoundRect(
+                left,
+                top,
+                right,
+                bottom,
+                indicatorHeight / 2f,
+                indicatorHeight / 2f,
+                shadowPaint
+            )
+
+            shadowPaint.clearShadowLayer()
+
+
+            // --------------------------------------------------------
+            // WHITE GLASS INDICATOR
+            // --------------------------------------------------------
 
             glassPaint.style =
                 Paint.Style.FILL
 
             glassPaint.color =
                 Color.argb(
-                    alpha,
+                    245,
                     255,
                     255,
                     255
@@ -1636,35 +1792,62 @@ class MainActivity : Activity() {
             )
         }
 
+
         // =================================================
         // IOS27_NAVIGATION_BAR_SPRING_V12
         // =================================================
+
 
         private fun animateNavigationBarSpring(
             opening: Boolean
         ) {
 
+            // ========================================================
+            // IOS27_NAVIGATION_SPRING_V13
+            // ========================================================
+
             navigationBarAnimator?.cancel()
+
 
             val values =
                 if (opening) {
 
+                    // При открытии:
+                    //
+                    // normal
+                    // -> strong stretch
+                    // -> compression
+                    // -> overshoot
+                    // -> settle
+
                     floatArrayOf(
-                        1f,
-                        1.13f,
-                        0.985f,
-                        1f
+                        1.00f,
+                        1.18f,
+                        1.28f,
+                        0.94f,
+                        1.045f,
+                        1.00f
                     )
 
                 } else {
 
+                    // При закрытии:
+                    //
+                    // normal
+                    // -> compression
+                    // -> overshoot
+                    // -> settle
+
                     floatArrayOf(
-                        1f,
-                        0.88f,
-                        1.035f,
-                        1f
+                        1.00f,
+                        0.82f,
+                        0.91f,
+                        1.06f,
+                        0.985f,
+                        1.00f
                     )
                 }
+
 
             navigationBarAnimator =
                 ValueAnimator.ofFloat(
@@ -1673,18 +1856,23 @@ class MainActivity : Activity() {
 
                     duration =
                         if (opening) {
-                            430L
+                            620L
                         } else {
-                            320L
+                            430L
                         }
+
+
+                    // Быстрое начало + мягкое физическое
+                    // завершение.
 
                     interpolator =
                         PathInterpolator(
-                            0.16f,
-                            1f,
-                            0.30f,
-                            1f
+                            0.18f,
+                            0.90f,
+                            0.20f,
+                            1.00f
                         )
+
 
                     addUpdateListener {
 
@@ -1695,9 +1883,11 @@ class MainActivity : Activity() {
                         invalidate()
                     }
 
+
                     start()
                 }
         }
+
 
 
 
@@ -2951,7 +3141,12 @@ class MainActivity : Activity() {
                     // Пока пальцем управляется Control Center,
                     // spring не должен бороться с жестом.
 
+                    // IOS27_NAVIGATION_INTERACTIVE_PHYSICS_V13
+
                     navigationBarAnimator?.cancel()
+
+                    // В начале каждого нового жеста
+                    // возвращаем spring к нейтральному состоянию.
 
                     navigationBarSpringScale = 1f
 
