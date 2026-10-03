@@ -553,7 +553,7 @@ class MainActivity : Activity() {
         // IOS27 CONTROL CENTER V17 - REAL SYSTEM INDICATORS
         // ============================================================
 
-        private fun startSystemIndicatorObserversV17() {
+        fun startSystemIndicatorObserversV17() {
 
             if (systemIndicatorsStarted)
                 return
@@ -715,7 +715,7 @@ class MainActivity : Activity() {
             }
         }
 
-        private fun stopSystemIndicatorObserversV17() {
+        fun stopSystemIndicatorObserversV17() {
 
             if (!systemIndicatorsStarted)
                 return
@@ -920,7 +920,7 @@ class MainActivity : Activity() {
 
                     if (
                         rssi !=
-                        android.net.wifi.WifiInfo.INVALID_RSSI
+                        -127
                     ) {
 
                         wifiLevel =
