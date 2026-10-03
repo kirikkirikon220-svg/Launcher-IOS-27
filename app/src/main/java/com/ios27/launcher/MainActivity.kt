@@ -2225,503 +2225,628 @@ class MainActivity : Activity() {
         // V9: интерактивное раскрытие Control Center.
         // Progress напрямую связан с движением пальца.
 
+
+        // ========================================================
+        // IOS27_CONTROL_CENTER_PHYSICS_V14
+        // ========================================================
+        //
+        // Физика Control Center:
+        // - damped spring
+        // - overshoot
+        // - cascade materialization
+        // - scale
+        // - alpha
+        // - translation
+        // - interactive gesture
+        // ========================================================
+
+        private fun ccSpringV14(
+            value: Float
+        ): Float {
+
+            val t =
+                value.coerceIn(
+                    0f,
+                    1f
+                )
+
+            val result =
+                1f -
+                kotlin.math.exp(
+                    (-7.8f * t).toDouble()
+                ).toFloat() *
+                kotlin.math.cos(
+                    (10.5f * t).toDouble()
+                ).toFloat()
+
+            return result.coerceIn(
+                0f,
+                1.04f
+            )
+        }
+
+        private fun ccEaseV14(
+            value: Float
+        ): Float {
+
+            val t =
+                value.coerceIn(
+                    0f,
+                    1f
+                )
+
+            return t * t * (3f - 2f * t)
+        }
+
+        private fun ccRevealV14(
+            value: Float,
+            start: Float,
+            end: Float
+        ): Float {
+
+            if (value <= start)
+                return 0f
+
+            if (value >= end)
+                return 1f
+
+            return ccEaseV14(
+                (
+                    (value - start) /
+                    (end - start)
+                ).coerceIn(
+                    0f,
+                    1f
+                )
+            )
+        }
+
+        private fun drawCCPhysicalV14(
+            canvas: Canvas,
+            progress: Float,
+            start: Float,
+            end: Float,
+            travel: Float,
+            block: () -> Unit
+        ) {
+
+            val reveal =
+                ccRevealV14(
+                    progress,
+                    start,
+                    end
+                )
+
+            if (reveal <= 0f)
+                return
+
+            canvas.save()
+
+            val spring =
+                ccSpringV14(
+                    reveal
+                )
+
+            val scale =
+                0.86f +
+                0.14f * spring
+
+            val translation =
+                travel *
+                (1f - reveal)
+
+            canvas.translate(
+                width / 2f,
+                translation
+            )
+
+            canvas.scale(
+                scale,
+                scale,
+                0f,
+                0f
+            )
+
+            canvas.translate(
+                -width / 2f,
+                0f
+            )
+
+            val alpha =
+                (
+                    255f *
+                    ccEaseV14(reveal)
+                )
+                    .toInt()
+                    .coerceIn(
+                        0,
+                        255
+                    )
+
+            val layer =
+                canvas.saveLayerAlpha(
+                    0f,
+                    0f,
+                    width.toFloat(),
+                    height.toFloat(),
+                    alpha
+                )
+
+            block()
+
+            canvas.restoreToCount(
+                layer
+            )
+
+            canvas.restore()
+        }
+
+        private fun drawCCBackdropV14(
+            canvas: Canvas,
+            progress: Float
+        ) {
+
+            val p =
+                progress.coerceIn(
+                    0f,
+                    1f
+                )
+
+            if (p <= 0f)
+                return
+
+            bgPaint.color =
+                Color.argb(
+                    (
+                        120f *
+                        ccEaseV14(p)
+                    )
+                        .toInt()
+                        .coerceIn(
+                            0,
+                            120
+                        ),
+                    0,
+                    0,
+                    0
+                )
+
+            canvas.drawRect(
+                0f,
+                0f,
+                width.toFloat(),
+                height.toFloat(),
+                bgPaint
+            )
+        }
+
         private fun drawControlCenter(canvas: Canvas) {
 
-        // IOS27_CONTROL_CENTER_VISUAL_V5
-        //
-        // Панель выходит СВЕРХУ вниз.
-        // Движение пальца напрямую управляет progress.
-        // После отпускания open/close анимируется отдельно.
-        //
-        // Визуально:
-        // - затемнение появляется постепенно;
-        // - вся панель приезжает сверху;
-        // - panel scale/alpha идут вместе с движением;
-        // - glass surfaces остаются прозрачными;
-        // - блоки имеют лёгкий stagger.
+            // IOS27_CONTROL_CENTER_RENDERER_V14
 
-        val p =
-            controlCenterProgress.coerceIn(0f, 1f)
+            val p =
+                controlCenterProgress.coerceIn(
+                    0f,
+                    1f
+                )
 
-        if (p <= 0f) {
-            return
-        }
+            if (p <= 0f)
+                return
 
-        val w =
-            width.toFloat()
+            val w =
+                width.toFloat()
 
-        val h =
-            height.toFloat()
+            val h =
+                height.toFloat()
 
-        // IOS27_CONTROL_CENTER_GESTURE_V7
-        //
-        // При движении пальца НИКАКОГО дополнительного easing:
-        // 30% движения пальца = примерно 30% открытия панели.
-        //
-        // После отпускания включается отдельная плавная easing-анимация.
+            // ----------------------------------------------------
+            // BACKDROP
+            // ----------------------------------------------------
 
-        val eased =
-            if (controlCenterInteractive) {
-
+            drawCCBackdropV14(
+                canvas,
                 p
+            )
 
-            } else {
+            // ----------------------------------------------------
+            // PANEL PHYSICS
+            // ----------------------------------------------------
 
-                1f -
-                (1f - p) *
-                (1f - p) *
-                (1f - p)
+            val panelProgress =
+                if (controlCenterInteractive) {
+                    p
+                } else {
+                    ccEaseV14(p)
+                }
+
+            val spring =
+                ccSpringV14(
+                    panelProgress
+                )
+
+            val margin =
+                dp(14f)
+
+            val top =
+                dp(18f)
+
+            val gap =
+                dp(10f)
+
+            val groupWidth =
+                (
+                    w -
+                    margin * 2f -
+                    gap
+                ) / 2f
+
+            val groupHeight =
+                dp(118f)
+
+            val sliderHeight =
+                dp(58f)
+
+            val sliderGap =
+                dp(10f)
+
+            val bottomControlsTop =
+                top +
+                groupHeight +
+                gap +
+                sliderHeight +
+                sliderGap +
+                sliderHeight +
+                dp(20f)
+
+            val panelHeight =
+                bottomControlsTop +
+                dp(78f) -
+                top +
+                dp(18f)
+
+            val slide =
+                -panelHeight *
+                (
+                    1f -
+                    panelProgress
+                )
+
+            val scale =
+                0.93f +
+                0.07f *
+                spring
+
+            val centerX =
+                w / 2f
+
+            val centerY =
+                top +
+                panelHeight / 2f
+
+            canvas.save()
+
+            canvas.translate(
+                centerX,
+                centerY + slide
+            )
+
+            canvas.scale(
+                scale,
+                scale
+            )
+
+            canvas.translate(
+                -centerX,
+                -centerY
+            )
+
+            // ----------------------------------------------------
+            // CONNECTIVITY
+            // ----------------------------------------------------
+
+            drawCCPhysicalV14(
+                canvas,
+                p,
+                0.18f,
+                0.48f,
+                dp(26f)
+            ) {
+
+                glassPaint.style =
+                    Paint.Style.FILL
+
+                glassPaint.color =
+                    Color.argb(
+                        120,
+                        245,
+                        248,
+                        255
+                    )
+
+                canvas.drawRoundRect(
+                    margin,
+                    top,
+                    margin + groupWidth,
+                    top + groupHeight,
+                    dp(28f),
+                    dp(28f),
+                    glassPaint
+                )
+
+                glassPaint.color =
+                    Color.argb(
+                        42,
+                        255,
+                        255,
+                        255
+                    )
+
+                canvas.drawRoundRect(
+                    margin + dp(1f),
+                    top + dp(1f),
+                    margin + groupWidth - dp(1f),
+                    top + dp(31f),
+                    dp(27f),
+                    dp(27f),
+                    glassPaint
+                )
+
+                drawCCCircle(
+                    canvas,
+                    margin + dp(37f),
+                    top + dp(36f),
+                    dp(23f),
+                    "Wi",
+                    true
+                )
+
+                drawCCCircle(
+                    canvas,
+                    margin + dp(96f),
+                    top + dp(36f),
+                    dp(23f),
+                    "BT",
+                    true
+                )
+
+                drawCCCircle(
+                    canvas,
+                    margin + dp(37f),
+                    top + dp(86f),
+                    dp(23f),
+                    "✈",
+                    false
+                )
+
+                drawCCCircle(
+                    canvas,
+                    margin + dp(96f),
+                    top + dp(86f),
+                    dp(23f),
+                    "M",
+                    false
+                )
             }
 
-        // IOS27_STATUS_BAR_LIQUID_V8_FIXED
-        //
-        // Первые ~2 см свайпа используются
-        // для перехода статусной области.
-        //
-        // После этого Control Center
-        // начинает materialize.
-
-        val panelEased =
-            ccReveal(
-                eased,
-                0.34f,
-                0.96f
-            )
-
-        // -----------------------------------------
-        // BACKDROP
-        // -----------------------------------------
-
-        // IOS27_CONTROL_CENTER_BACKDROP_V11
-        //
-        // Home Screen затемняется ещё до появления
-        // основной панели. Это соответствует записи:
-        // сначала исчезает яркость Home,
-        // затем materialize сам Control Center.
-
-        bgPaint.color =
-            Color.argb(
-                (115f * eased).toInt(),
-                0,
-                0,
-                0
-            )
-
-        canvas.drawRect(
-            0f,
-            0f,
-            w,
-            h,
-            bgPaint
-        )
-
-        // -----------------------------------------
-        // PANEL GEOMETRY
-        // -----------------------------------------
-
-        val margin =
-            dp(14f)
-
-        val top =
-            dp(18f)
-
-        val gap =
-            dp(10f)
-
-        val groupWidth =
-            (w - margin * 2f - gap) / 2f
-
-        val groupHeight =
-            dp(118f)
-
-        val sliderHeight =
-            dp(58f)
-
-        val sliderGap =
-            dp(10f)
-
-        val bottomControlsTop =
-            top +
-            groupHeight +
-            gap +
-            sliderHeight +
-            sliderGap +
-            sliderHeight +
-            dp(20f)
-
-        val panelHeight =
-            bottomControlsTop +
-            dp(78f) -
-            top +
-            dp(18f)
-
-        // -----------------------------------------
-        // TOP-DOWN MOTION
-        // -----------------------------------------
-
-        val slideY =
-            -panelHeight *
-            (1f - panelEased)
-
-        val scale =
-            0.965f +
-            0.035f * panelEased
-
-        val panelAlpha =
-            (255f * panelEased)
-                .toInt()
-                .coerceIn(0, 255)
-
-        val centerX =
-            w / 2f
-
-        val centerY =
-            top +
-            panelHeight / 2f
-
-        canvas.save()
-
-        canvas.translate(
-            centerX,
-            centerY + slideY
-        )
-
-        canvas.scale(
-            scale,
-            scale
-        )
-
-        canvas.translate(
-            -centerX,
-            -centerY
-        )
-
-        // -----------------------------------------
-        // CONNECTIVITY GLASS
-        // -----------------------------------------
-
-        val connectivityProgress =
-            ccReveal(
-                eased,
-                0.34f,
-                0.54f
-            )
-
-        drawCCReveal(
-            canvas,
-            connectivityProgress,
-            dp(24f)
-        ) {
-
-        glassPaint.style =
-            Paint.Style.FILL
-
-        glassPaint.color =
-            Color.argb(
-                (92f * eased).toInt(),
-                245,
-                248,
-                255
-            )
-
-        canvas.drawRoundRect(
-            margin,
-            top,
-            margin + groupWidth,
-            top + groupHeight,
-            dp(28f),
-            dp(28f),
-            glassPaint
-        )
-
-        glassPaint.color =
-            Color.argb(
-                (36f * eased).toInt(),
-                255,
-                255,
-                255
-            )
-
-        canvas.drawRoundRect(
-            margin + dp(1f),
-            top + dp(1f),
-            margin + groupWidth - dp(1f),
-            top + dp(31f),
-            dp(27f),
-            dp(27f),
-            glassPaint
-        )
-
-        drawCCCircle(
-            canvas,
-            margin + dp(37f),
-            top + dp(36f),
-            dp(23f),
-            "Wi",
-            true
-        )
-
-        drawCCCircle(
-            canvas,
-            margin + dp(96f),
-            top + dp(36f),
-            dp(23f),
-            "BT",
-            true
-        )
-
-        drawCCCircle(
-            canvas,
-            margin + dp(37f),
-            top + dp(86f),
-            dp(23f),
-            "✈",
-            false
-        )
-
-        drawCCCircle(
-            canvas,
-            margin + dp(96f),
-            top + dp(86f),
-            dp(23f),
-            "M",
-            false
-        )
-
-        }
-
-        // -----------------------------------------
-        // MEDIA GLASS
-        // -----------------------------------------
-
-        val mediaProgress =
-            ccReveal(
-                eased,
-                0.43f,
-                0.64f
-            )
-
-        drawCCReveal(
-            canvas,
-            mediaProgress,
-            dp(26f)
-        ) {
-
-        val mediaLeft =
-            margin +
-            groupWidth +
-            gap
-
-        glassPaint.color =
-            Color.argb(
-                (92f * eased).toInt(),
-                245,
-                248,
-                255
-            )
-
-        canvas.drawRoundRect(
-            mediaLeft,
-            top,
-            mediaLeft + groupWidth,
-            top + groupHeight,
-            dp(28f),
-            dp(28f),
-            glassPaint
-        )
-
-        glassPaint.color =
-            Color.argb(
-                (30f * eased).toInt(),
-                255,
-                255,
-                255
-            )
-
-        canvas.drawRoundRect(
-            mediaLeft + dp(1f),
-            top + dp(1f),
-            mediaLeft + groupWidth - dp(1f),
-            top + dp(31f),
-            dp(27f),
-            dp(27f),
-            glassPaint
-        )
-
-        textPaint.alpha =
-            panelAlpha
-
-        textPaint.color =
-            Color.WHITE
-
-        textPaint.textSize =
-            dp(12f)
-
-        textPaint.typeface =
-            Typeface.DEFAULT_BOLD
-
-        canvas.drawText(
-            "Сейчас играет",
-            mediaLeft + dp(17f),
-            top + dp(28f),
-            textPaint
-        )
-
-        textPaint.textSize =
-            dp(18f)
-
-        canvas.drawText(
-            "Музыка",
-            mediaLeft + dp(17f),
-            top + dp(55f),
-            textPaint
-        )
-
-        textPaint.color =
-            Color.argb(
-                (190f * eased).toInt(),
-                255,
-                255,
-                255
-            )
-
-        textPaint.textSize =
-            dp(11f)
-
-        textPaint.typeface =
-            Typeface.DEFAULT
-
-        canvas.drawText(
-            "Ничего не воспроизводится",
-            mediaLeft + dp(17f),
-            top + dp(77f),
-            textPaint
-        )
-
-        drawCCCircle(
-            canvas,
-            mediaLeft + groupWidth - dp(31f),
-            top + dp(88f),
-            dp(20f),
-            "▶",
-            false
-        )
-
-        }
-
-        // -----------------------------------------
-        // SLIDERS
-        // -----------------------------------------
-
-        val slidersProgress =
-            ccReveal(
-                eased,
-                0.52f,
-                0.74f
-            )
-
-        drawCCReveal(
-            canvas,
-            slidersProgress,
-            dp(30f)
-        ) {
-
-        val sliderY =
-            top +
-            groupHeight +
-            gap
-
-        drawCCSlider(
-            canvas,
-            margin,
-            sliderY,
-            w - margin * 2f,
-            sliderHeight,
-            "☀"
-        )
-
-        drawCCSlider(
-            canvas,
-            margin,
-            sliderY +
-                sliderHeight +
-                sliderGap,
-            w - margin * 2f,
-            sliderHeight,
-            "♪"
-        )
-
-        }
-
-        // -----------------------------------------
-        // BOTTOM CONTROLS
-        // -----------------------------------------
-
-        val bottomProgress =
-            ccReveal(
-                eased,
+            // ----------------------------------------------------
+            // MEDIA
+            // ----------------------------------------------------
+
+            drawCCPhysicalV14(
+                canvas,
+                p,
+                0.30f,
                 0.62f,
-                0.88f
-            )
-
-        drawCCReveal(
-            canvas,
-            bottomProgress,
-            dp(34f)
-        ) {
-
-        val smallY =
-            bottomControlsTop
-
-        val smallWidth =
-            (
-                w -
-                margin * 2f -
                 dp(30f)
-            ) / 4f
+            ) {
 
-        drawCCSmall(
-            canvas,
-            margin,
-            smallY,
-            smallWidth,
-            "Фокус"
-        )
+                val mediaLeft =
+                    margin +
+                    groupWidth +
+                    gap
 
-        drawCCSmall(
-            canvas,
-            margin +
-                smallWidth +
-                dp(10f),
-            smallY,
-            smallWidth,
-            "Камера"
-        )
+                glassPaint.color =
+                    Color.argb(
+                        120,
+                        245,
+                        248,
+                        255
+                    )
 
-        drawCCSmall(
-            canvas,
-            margin +
-                (smallWidth + dp(10f)) * 2f,
-            smallY,
-            smallWidth,
-            "QR"
-        )
+                canvas.drawRoundRect(
+                    mediaLeft,
+                    top,
+                    mediaLeft + groupWidth,
+                    top + groupHeight,
+                    dp(28f),
+                    dp(28f),
+                    glassPaint
+                )
 
-        drawCCSmall(
-            canvas,
-            margin +
-                (smallWidth + dp(10f)) * 3f,
-            smallY,
-            smallWidth,
-            "+"
-        )
+                glassPaint.color =
+                    Color.argb(
+                        38,
+                        255,
+                        255,
+                        255
+                    )
 
+                canvas.drawRoundRect(
+                    mediaLeft + dp(1f),
+                    top + dp(1f),
+                    mediaLeft + groupWidth - dp(1f),
+                    top + dp(31f),
+                    dp(27f),
+                    dp(27f),
+                    glassPaint
+                )
+
+                textPaint.alpha = 255
+                textPaint.color =
+                    Color.WHITE
+
+                textPaint.textSize =
+                    dp(12f)
+
+                textPaint.typeface =
+                    Typeface.DEFAULT_BOLD
+
+                canvas.drawText(
+                    "Сейчас играет",
+                    mediaLeft + dp(17f),
+                    top + dp(28f),
+                    textPaint
+                )
+
+                textPaint.textSize =
+                    dp(18f)
+
+                canvas.drawText(
+                    "Музыка",
+                    mediaLeft + dp(17f),
+                    top + dp(55f),
+                    textPaint
+                )
+
+                textPaint.color =
+                    Color.argb(
+                        190,
+                        255,
+                        255,
+                        255
+                    )
+
+                textPaint.textSize =
+                    dp(11f)
+
+                textPaint.typeface =
+                    Typeface.DEFAULT
+
+                canvas.drawText(
+                    "Ничего не воспроизводится",
+                    mediaLeft + dp(17f),
+                    top + dp(77f),
+                    textPaint
+                )
+
+                drawCCCircle(
+                    canvas,
+                    mediaLeft + groupWidth - dp(31f),
+                    top + dp(88f),
+                    dp(20f),
+                    "▶",
+                    false
+                )
+            }
+
+            // ----------------------------------------------------
+            // BRIGHTNESS / VOLUME
+            // ----------------------------------------------------
+
+            drawCCPhysicalV14(
+                canvas,
+                p,
+                0.42f,
+                0.72f,
+                dp(34f)
+            ) {
+
+                val sliderY =
+                    top +
+                    groupHeight +
+                    gap
+
+                drawCCSlider(
+                    canvas,
+                    margin,
+                    sliderY,
+                    w - margin * 2f,
+                    sliderHeight,
+                    "☀"
+                )
+
+                drawCCSlider(
+                    canvas,
+                    margin,
+                    sliderY +
+                        sliderHeight +
+                        sliderGap,
+                    w - margin * 2f,
+                    sliderHeight,
+                    "♪"
+                )
+            }
+
+            // ----------------------------------------------------
+            // BOTTOM CONTROLS
+            // ----------------------------------------------------
+
+            drawCCPhysicalV14(
+                canvas,
+                p,
+                0.56f,
+                0.88f,
+                dp(38f)
+            ) {
+
+                val smallY =
+                    bottomControlsTop
+
+                val smallWidth =
+                    (
+                        w -
+                        margin * 2f -
+                        dp(30f)
+                    ) / 4f
+
+                drawCCSmall(
+                    canvas,
+                    margin,
+                    smallY,
+                    smallWidth,
+                    "Фокус"
+                )
+
+                drawCCSmall(
+                    canvas,
+                    margin +
+                        smallWidth +
+                        dp(10f),
+                    smallY,
+                    smallWidth,
+                    "Камера"
+                )
+
+                drawCCSmall(
+                    canvas,
+                    margin +
+                        (
+                            smallWidth +
+                            dp(10f)
+                        ) * 2f,
+                    smallY,
+                    smallWidth,
+                    "QR"
+                )
+
+                drawCCSmall(
+                    canvas,
+                    margin +
+                        (
+                            smallWidth +
+                            dp(10f)
+                        ) * 3f,
+                    smallY,
+                    smallWidth,
+                    "+"
+                )
+            }
+
+            textPaint.alpha = 255
+
+            canvas.restore()
         }
 
-        textPaint.alpha = 255
-
-        canvas.restore()
-    }
 
 
     private fun drawCCCircle(
@@ -2935,116 +3060,120 @@ class MainActivity : Activity() {
 
         // -----------------------------------------
 
-        private fun openControlCenter() {
+                private fun openControlCenter() {
 
-        // IOS27_CONTROL_CENTER_ANIMATION_V7
+            // IOS27_CONTROL_CENTER_ANIMATION_V14
 
-        controlCenter = true
-        controlCenterGesture = false
-        controlCenterInteractive = false
+            controlCenter = true
+            controlCenterGesture = false
+            controlCenterInteractive = false
 
+            animateNavigationBarSpring(
+                opening = true
+            )
 
-        // IOS27_NAVIGATION_BAR_OPEN_SPRING_V12
+            ccAnimator?.cancel()
 
-        animateNavigationBarSpring(
-            opening = true
-        )
+            val start =
+                controlCenterProgress.coerceIn(
+                    0f,
+                    1f
+                )
 
-        ccAnimator?.cancel()
+            ccAnimator =
+                ValueAnimator.ofFloat(
+                    start,
+                    1f
+                ).apply {
 
-        val startProgress =
-            controlCenterProgress.coerceIn(0f, 1f)
+                    duration = 430L
 
-        ccAnimator =
-            ValueAnimator.ofFloat(
-                startProgress,
-                1f
-            ).apply {
+                    addUpdateListener { animator ->
 
-                // iOS-like settle:
-                // быстрое движение в начале +
-                // мягкое замедление в конце.
-                // Быстрый iOS-like settle после отпускания.
-                duration = 280L
+                        val raw =
+                            animator.animatedValue
+                                as Float
 
-                interpolator =
-                    PathInterpolator(
-                        0.16f,
-                        1f,
-                        0.30f,
-                        1f
-                    )
+                        controlCenterProgress =
+                            ccSpringV14(
+                                raw
+                            )
+                                .coerceIn(
+                                    0f,
+                                    1f
+                                )
 
-                addUpdateListener {
-
-                    controlCenterProgress =
-                        it.animatedValue as Float
-
-                    invalidate()
-                }
-
-                start()
-            }
-    }
-
-
-        private fun closeControlCenter() {
-
-        // IOS27_CONTROL_CENTER_ANIMATION_V7
-
-        controlCenterGesture = false
-        controlCenterInteractive = false
-
-
-        // IOS27_NAVIGATION_BAR_CLOSE_SPRING_V12
-
-        animateNavigationBarSpring(
-            opening = false
-        )
-
-        ccAnimator?.cancel()
-
-        val startProgress =
-            controlCenterProgress.coerceIn(0f, 1f)
-
-        ccAnimator =
-            ValueAnimator.ofFloat(
-                startProgress,
-                0f
-            ).apply {
-
-                // Закрытие быстрее раскрытия:
-                // панель быстро возвращается к Home Screen.
-                duration = 220L
-
-                interpolator =
-                    PathInterpolator(
-                        0.55f,
-                        0f,
-                        0.85f,
-                        0.25f
-                    )
-
-                addUpdateListener {
-
-                    controlCenterProgress =
-                        it.animatedValue as Float
-
-                    if (
-                        controlCenterProgress <= 0.005f
-                    ) {
-
-                        controlCenterProgress = 0f
-                        controlCenter = false
-                        controlCenterInteractive = false
+                        invalidate()
                     }
 
-                    invalidate()
+                    start()
                 }
+        }
 
-                start()
-            }
-    }
+
+
+                private fun closeControlCenter() {
+
+            // IOS27_CONTROL_CENTER_ANIMATION_V14
+
+            controlCenterGesture = false
+            controlCenterInteractive = false
+
+            animateNavigationBarSpring(
+                opening = false
+            )
+
+            ccAnimator?.cancel()
+
+            val start =
+                controlCenterProgress.coerceIn(
+                    0f,
+                    1f
+                )
+
+            ccAnimator =
+                ValueAnimator.ofFloat(
+                    start,
+                    0f
+                ).apply {
+
+                    duration = 300L
+
+                    addUpdateListener { animator ->
+
+                        val raw =
+                            animator.animatedValue
+                                as Float
+
+                        val reversed =
+                            1f -
+                            ccSpringV14(
+                                1f - raw
+                            )
+
+                        controlCenterProgress =
+                            reversed.coerceIn(
+                                0f,
+                                1f
+                            )
+
+                        if (
+                            controlCenterProgress <=
+                            0.005f
+                        ) {
+
+                            controlCenterProgress = 0f
+                            controlCenter = false
+                            controlCenterInteractive = false
+                        }
+
+                        invalidate()
+                    }
+
+                    start()
+                }
+        }
+
 
 
     // TOUCH
