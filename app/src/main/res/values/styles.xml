@@ -4,10 +4,14 @@
 
     <style
         name="AppTheme"
-        parent="android:style/Theme.Material.Light.NoActionBar">
+        parent="android:style/Theme.Material.NoActionBar">
 
         <item name="android:fontFamily">
             sans
+        </item>
+
+        <item name="android:windowBackground">
+            @color/launcher_window_background
         </item>
 
         <item name="android:windowLightStatusBar">

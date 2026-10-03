@@ -18,7 +18,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-// IOS27_CONTROL_CENTER_ANIMATION_V11
+// IOS27_CONTROL_CENTER_ANIMATION_V15
 // Основано на покадровом анализе референсной записи.
 // Статусная правая группа фиксирована.
 // Время только fade.
@@ -1088,6 +1088,12 @@ class MainActivity : Activity() {
             canvas: Canvas
         ) {
             prepareWallpaperShaders()
+
+            // IOS27_STARTUP_BACKGROUND_FIX_V15
+            // Не допускаем сохранённый alpha/цвет от предыдущего
+            // draw-pass.
+            bgPaint.alpha = 255
+            bgPaint.style = Paint.Style.FILL
 
             val w = width.toFloat()
             val h = height.toFloat()
@@ -2511,9 +2517,12 @@ class MainActivity : Activity() {
                     panelProgress
                 )
 
+            // IOS27_CONTROL_CENTER_PANEL_SCALE_V15
+            // Меньше начальный scale -> заметнее физическое
+            // materialize, но без резкого zoom.
             val scale =
-                0.93f +
-                0.07f *
+                0.90f +
+                0.10f *
                 spring
 
             val centerX =
@@ -3214,9 +3223,19 @@ class MainActivity : Activity() {
                 // iPhone Face ID:
                 // начало Control Center только
                 // из верхнего правого участка.
+                // IOS27_CONTROL_CENTER_GESTURE_V15
+                //
+                // Верхняя самая кромка Android/Samsung может
+                // перехватываться системным notification shade.
+                //
+                // Поэтому приложение принимает жест немного
+                // ниже верхней границы.
+                //
+                // Это позволяет реально открыть наш Control Center
+                // на Android 11 без root/device-owner.
                 controlCenterGesture =
-                    y <= dp(88f) &&
-                    x >= width * 0.55f
+                    y <= dp(150f) &&
+                    x >= width * 0.45f
 
                 if (controlCenterGesture) {
 
@@ -3281,10 +3300,20 @@ class MainActivity : Activity() {
 
                     ccAnimator?.cancel()
 
+                    // IOS27_CONTROL_CENTER_INTERACTIVE_V15
+                    //
+                    // Более короткая дистанция делает панель
+                    // визуально отзывчивой уже в начале свайпа.
                     controlCenterProgress =
                         (
-                            dy / dp(260f)
+                            dy / dp(220f)
                         ).coerceIn(0f, 1f)
+
+                    // С первых реальных пикселей жеста
+                    // считаем Control Center активным.
+                    if (controlCenterProgress > 0f) {
+                        invalidate()
+                    }
 
                     invalidate()
 
@@ -3388,8 +3417,8 @@ class MainActivity : Activity() {
                 ) {
 
                     val shouldOpen =
-                        controlCenterProgress >= 0.35f ||
-                        dy >= dp(90f)
+                        controlCenterProgress >= 0.25f ||
+                        dy >= dp(65f)
 
                     controlCenterGesture = false
 
@@ -3466,8 +3495,16 @@ class MainActivity : Activity() {
                     controlCenterProgress > 0f
                 ) {
 
+                    // IOS27_CONTROL_CENTER_CANCEL_FIX_V15
+                    //
+                    // Android/Samsung может отправить CANCEL,
+                    // когда системный edge gesture начал
+                    // перехватывать касание.
+                    //
+                    // Если пользователь уже реально потянул
+                    // панель, не уничтожаем прогресс.
                     if (
-                        controlCenterProgress >= 0.35f
+                        controlCenterProgress >= 0.25f
                     ) {
 
                         openControlCenter()
