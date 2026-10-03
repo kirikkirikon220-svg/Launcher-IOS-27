@@ -268,6 +268,31 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onBackPressed() {
+
+        if (
+            ::launcherView.isInitialized &&
+            (
+                launcherView.isControlCenterVisibleV17()
+            )
+        ) {
+
+            launcherView.closeControlCenterFromActivityV17()
+            return
+        }
+
+        super.onBackPressed()
+    }
+
+    override fun onPause() {
+
+        if (::launcherView.isInitialized) {
+            launcherView.stopSystemIndicatorObserversV17()
+        }
+
+        super.onPause()
+    }
+
 
     override fun onResume() {
         super.onResume()
@@ -277,6 +302,20 @@ class MainActivity : Activity() {
         if (::launcherView.isInitialized) {
             launcherView.reloadApps()
         }
+
+
+        if (::launcherView.isInitialized) {
+            launcherView.startSystemIndicatorObserversV17()
+        }
+    }
+
+    override fun onDestroy() {
+
+        if (::launcherView.isInitialized) {
+            launcherView.stopSystemIndicatorObserversV17()
+        }
+
+        super.onDestroy()
     }
 
     private data class AppItem(
@@ -336,6 +375,51 @@ class MainActivity : Activity() {
         private var controlCenterProgress = 0f
 
         private var ccAnimator: ValueAnimator? = null
+
+        // ============================================================
+        // IOS27 CONTROL CENTER V17 - GESTURE PHYSICS
+        // ============================================================
+
+        private var ccVelocityTracker: android.view.VelocityTracker? = null
+        private var ccGestureStartProgress = 0f
+        private var ccGestureLastY = 0f
+        private var ccGestureDownTime = 0L
+
+        // ============================================================
+        // IOS27 CONTROL CENTER V17 - REAL SYSTEM STATE
+        // ============================================================
+
+        private var systemIndicatorsStarted = false
+
+        private var wifiConnected = false
+        private var wifiLevel = -1
+
+        private var mobileConnected = false
+        private var mobileLevel = -1
+        private var mobileType = "—"
+
+        private var bluetoothState = -1
+
+        private var batteryPercent = 100
+        private var batteryCharging = false
+
+        private var ccNetworkCallback:
+            android.net.ConnectivityManager.NetworkCallback? = null
+
+        private var ccPhoneStateListener:
+            android.telephony.PhoneStateListener? = null
+
+        private val ccSystemReceiver =
+            object : android.content.BroadcastReceiver() {
+
+                override fun onReceive(
+                    context: android.content.Context?,
+                    intent: android.content.Intent?
+                ) {
+                    refreshSystemIndicatorsV17()
+                    invalidate()
+                }
+            }
 
         // =================================================
         // IOS27_NAVIGATION_BAR_PHYSICS_V12
@@ -465,37 +549,699 @@ class MainActivity : Activity() {
         // Правая группа остаётся видимой.
         // Control Center materialize идёт по progress пальца.
 
+        // ============================================================
+        // IOS27 CONTROL CENTER V17 - REAL SYSTEM INDICATORS
+        // ============================================================
+
+        private fun startSystemIndicatorObserversV17() {
+
+            if (systemIndicatorsStarted)
+                return
+
+            systemIndicatorsStarted = true
+
+            refreshSystemIndicatorsV17()
+
+            try {
+
+                val filter =
+                    android.content.IntentFilter().apply {
+
+                        addAction(
+                            android.content.Intent.ACTION_BATTERY_CHANGED
+                        )
+
+                        addAction(
+                            android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION
+                        )
+
+                        addAction(
+                            android.net.wifi.WifiManager.NETWORK_STATE_CHANGED_ACTION
+                        )
+
+                        addAction(
+                            android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED
+                        )
+
+                    }
+
+                if (
+                    android.os.Build.VERSION.SDK_INT >=
+                    android.os.Build.VERSION_CODES.TIRAMISU
+                ) {
+
+                    context.registerReceiver(
+                        ccSystemReceiver,
+                        filter,
+                        android.content.Context.RECEIVER_NOT_EXPORTED
+                    )
+
+                } else {
+
+                    @Suppress("DEPRECATION")
+                    context.registerReceiver(
+                        ccSystemReceiver,
+                        filter
+                    )
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            try {
+
+                val connectivity =
+                    context.getSystemService(
+                        android.content.Context.CONNECTIVITY_SERVICE
+                    ) as? android.net.ConnectivityManager
+
+                if (connectivity != null) {
+
+                    val callback =
+                        object :
+                            android.net.ConnectivityManager.NetworkCallback() {
+
+                            override fun onAvailable(
+                                network: android.net.Network
+                            ) {
+                                refreshSystemIndicatorsV17()
+                                postInvalidateOnAnimation()
+                            }
+
+                            override fun onLost(
+                                network: android.net.Network
+                            ) {
+                                refreshSystemIndicatorsV17()
+                                postInvalidateOnAnimation()
+                            }
+
+                            override fun onCapabilitiesChanged(
+                                network: android.net.Network,
+                                networkCapabilities:
+                                    android.net.NetworkCapabilities
+                            ) {
+                                refreshSystemIndicatorsV17()
+                                postInvalidateOnAnimation()
+                            }
+
+                        }
+
+                    ccNetworkCallback = callback
+
+                    connectivity.registerDefaultNetworkCallback(
+                        callback
+                    )
+                }
+
+            } catch (_: Throwable) {
+                ccNetworkCallback = null
+            }
+
+            try {
+
+                if (
+                    android.os.Build.VERSION.SDK_INT >=
+                    android.os.Build.VERSION_CODES.M &&
+                    context.checkSelfPermission(
+                        android.Manifest.permission.READ_PHONE_STATE
+                    ) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+
+                    val telephony =
+                        context.getSystemService(
+                            android.content.Context.TELEPHONY_SERVICE
+                        ) as? android.telephony.TelephonyManager
+
+                    if (telephony != null) {
+
+                        val listener =
+                            object :
+                                android.telephony.PhoneStateListener() {
+
+                                override fun onSignalStrengthsChanged(
+                                    signalStrength:
+                                        android.telephony.SignalStrength
+                                ) {
+
+                                    try {
+
+                                        mobileLevel =
+                                            signalStrength.level
+                                                .coerceIn(0, 4)
+
+                                    } catch (_: Throwable) {
+                                        mobileLevel = -1
+                                    }
+
+                                    postInvalidateOnAnimation()
+                                }
+
+                            }
+
+                        ccPhoneStateListener = listener
+
+                        @Suppress("DEPRECATION")
+                        telephony.listen(
+                            listener,
+                            android.telephony.PhoneStateListener
+                                .LISTEN_SIGNAL_STRENGTHS
+                        )
+                    }
+                }
+
+            } catch (_: Throwable) {
+                ccPhoneStateListener = null
+            }
+        }
+
+        private fun stopSystemIndicatorObserversV17() {
+
+            if (!systemIndicatorsStarted)
+                return
+
+            systemIndicatorsStarted = false
+
+            try {
+                context.unregisterReceiver(
+                    ccSystemReceiver
+                )
+            } catch (_: Throwable) {
+            }
+
+            try {
+
+                val connectivity =
+                    context.getSystemService(
+                        android.content.Context.CONNECTIVITY_SERVICE
+                    ) as? android.net.ConnectivityManager
+
+                val callback =
+                    ccNetworkCallback
+
+                if (
+                    connectivity != null &&
+                    callback != null
+                ) {
+                    connectivity.unregisterNetworkCallback(
+                        callback
+                    )
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            ccNetworkCallback = null
+
+            try {
+
+                val telephony =
+                    context.getSystemService(
+                        android.content.Context.TELEPHONY_SERVICE
+                    ) as? android.telephony.TelephonyManager
+
+                val listener =
+                    ccPhoneStateListener
+
+                if (
+                    telephony != null &&
+                    listener != null
+                ) {
+
+                    @Suppress("DEPRECATION")
+                    telephony.listen(
+                        listener,
+                        android.telephony.PhoneStateListener.LISTEN_NONE
+                    )
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            ccPhoneStateListener = null
+        }
+
+        private fun refreshSystemIndicatorsV17() {
+
+            // --------------------------------------------------------
+            // BATTERY
+            // --------------------------------------------------------
+
+            try {
+
+                val batteryIntent =
+                    context.registerReceiver(
+                        null,
+                        android.content.IntentFilter(
+                            android.content.Intent.ACTION_BATTERY_CHANGED
+                        )
+                    )
+
+                if (batteryIntent != null) {
+
+                    val level =
+                        batteryIntent.getIntExtra(
+                            android.os.BatteryManager.EXTRA_LEVEL,
+                            -1
+                        )
+
+                    val scale =
+                        batteryIntent.getIntExtra(
+                            android.os.BatteryManager.EXTRA_SCALE,
+                            100
+                        )
+
+                    batteryPercent =
+                        if (
+                            level >= 0 &&
+                            scale > 0
+                        ) {
+                            (
+                                level.toFloat() /
+                                scale.toFloat() *
+                                100f
+                            )
+                                .toInt()
+                                .coerceIn(0, 100)
+                        } else {
+                            batteryPercent
+                        }
+
+                    val status =
+                        batteryIntent.getIntExtra(
+                            android.os.BatteryManager.EXTRA_STATUS,
+                            -1
+                        )
+
+                    batteryCharging =
+                        status ==
+                        android.os.BatteryManager
+                            .BATTERY_STATUS_CHARGING ||
+                        status ==
+                        android.os.BatteryManager
+                            .BATTERY_STATUS_FULL
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            // --------------------------------------------------------
+            // NETWORK
+            // --------------------------------------------------------
+
+            wifiConnected = false
+            mobileConnected = false
+
+            try {
+
+                val connectivity =
+                    context.getSystemService(
+                        android.content.Context.CONNECTIVITY_SERVICE
+                    ) as? android.net.ConnectivityManager
+
+                if (connectivity != null) {
+
+                    for (
+                        network
+                        in connectivity.allNetworks
+                    ) {
+
+                        val capabilities =
+                            connectivity.getNetworkCapabilities(
+                                network
+                            )
+                                ?: continue
+
+                        if (
+                            capabilities.hasTransport(
+                                android.net.NetworkCapabilities
+                                    .TRANSPORT_WIFI
+                            )
+                        ) {
+
+                            wifiConnected = true
+                        }
+
+                        if (
+                            capabilities.hasTransport(
+                                android.net.NetworkCapabilities
+                                    .TRANSPORT_CELLULAR
+                            )
+                        ) {
+
+                            mobileConnected = true
+                        }
+                    }
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            // --------------------------------------------------------
+            // WIFI RSSI
+            // --------------------------------------------------------
+
+            wifiLevel = -1
+
+            try {
+
+                val wifi =
+                    context.getSystemService(
+                        android.content.Context.WIFI_SERVICE
+                    ) as? android.net.wifi.WifiManager
+
+                if (
+                    wifi != null &&
+                    wifiConnected
+                ) {
+
+                    val rssi =
+                        wifi.connectionInfo.rssi
+
+                    if (
+                        rssi !=
+                        android.net.wifi.WifiInfo.INVALID_RSSI
+                    ) {
+
+                        wifiLevel =
+                            when {
+                                rssi >= -55 -> 4
+                                rssi >= -67 -> 3
+                                rssi >= -75 -> 2
+                                rssi >= -85 -> 1
+                                else -> 0
+                            }
+                    }
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            // --------------------------------------------------------
+            // MOBILE SIGNAL / NETWORK TYPE
+            // --------------------------------------------------------
+
+            if (!mobileConnected) {
+                mobileLevel = -1
+                mobileType = "—"
+            }
+
+            try {
+
+                val telephony =
+                    context.getSystemService(
+                        android.content.Context.TELEPHONY_SERVICE
+                    ) as? android.telephony.TelephonyManager
+
+                if (telephony != null) {
+
+                    try {
+
+                        val strength =
+                            telephony.signalStrength
+
+                        if (strength != null) {
+
+                            mobileLevel =
+                                strength.level
+                                    .coerceIn(0, 4)
+                        }
+
+                    } catch (_: Throwable) {
+                        mobileLevel = -1
+                    }
+
+                    try {
+
+                        mobileType =
+                            when (
+                                telephony.dataNetworkType
+                            ) {
+
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_NR ->
+                                    "5G"
+
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_LTE ->
+                                    "4G"
+
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_HSPAP,
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_HSPA,
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_HSDPA,
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_HSUPA ->
+                                    "3G"
+
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_EDGE,
+                                android.telephony.TelephonyManager
+                                    .NETWORK_TYPE_GPRS ->
+                                    "2G"
+
+                                else ->
+                                    if (mobileConnected) "LTE" else "—"
+                            }
+
+                    } catch (_: Throwable) {
+
+                        mobileType =
+                            if (mobileConnected)
+                                "CELL"
+                            else
+                                "—"
+                    }
+                }
+
+            } catch (_: Throwable) {
+            }
+
+            // --------------------------------------------------------
+            // BLUETOOTH
+            // --------------------------------------------------------
+
+            bluetoothState = -1
+
+            try {
+
+                val adapter =
+                    android.bluetooth.BluetoothAdapter
+                        .getDefaultAdapter()
+
+                if (adapter != null) {
+
+                    if (
+                        android.os.Build.VERSION.SDK_INT < 31 ||
+                        context.checkSelfPermission(
+                            android.Manifest.permission.BLUETOOTH_CONNECT
+                        ) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+
+                        bluetoothState =
+                            adapter.state
+                    }
+                }
+
+            } catch (_: Throwable) {
+                bluetoothState = -1
+            }
+        }
+
+        private fun drawCCBarsV17(
+            canvas: Canvas,
+            cx: Float,
+            baseline: Float,
+            level: Int
+        ) {
+
+            bgPaint.style = Paint.Style.FILL
+            bgPaint.color = Color.WHITE
+            bgPaint.alpha = 235
+
+            if (level < 0) {
+
+                textPaint.color = Color.WHITE
+                textPaint.alpha = 180
+                textPaint.textSize = dp(12f)
+                textPaint.textAlign = Paint.Align.CENTER
+                textPaint.typeface = Typeface.DEFAULT_BOLD
+
+                canvas.drawText(
+                    "—",
+                    cx,
+                    baseline,
+                    textPaint
+                )
+
+                return
+            }
+
+            val safeLevel =
+                level.coerceIn(0, 4)
+
+            for (i in 0 until 4) {
+
+                val barHeight =
+                    dp(
+                        4f +
+                        i * 3.5f
+                    )
+
+                val alpha =
+                    if (i < safeLevel)
+                        235
+                    else
+                        65
+
+                bgPaint.alpha = alpha
+
+                val left =
+                    cx -
+                    dp(12f) +
+                    dp(i * 5f)
+
+                canvas.drawRoundRect(
+                    left,
+                    baseline - barHeight,
+                    left + dp(3.2f),
+                    baseline,
+                    dp(1.2f),
+                    dp(1.2f),
+                    bgPaint
+                )
+            }
+        }
+
+        private fun drawCCBatteryV17(
+            canvas: Canvas,
+            left: Float,
+            top: Float,
+            width: Float,
+            height: Float
+        ) {
+
+            bgPaint.style = Paint.Style.STROKE
+            bgPaint.strokeWidth = dp(1.4f)
+            bgPaint.color = Color.WHITE
+            bgPaint.alpha = 235
+
+            canvas.drawRoundRect(
+                left,
+                top,
+                left + width,
+                top + height,
+                dp(4f),
+                dp(4f),
+                bgPaint
+            )
+
+            bgPaint.style = Paint.Style.FILL
+
+            val innerWidth =
+                (
+                    width -
+                    dp(4f)
+                ) *
+                batteryPercent /
+                100f
+
+            canvas.drawRoundRect(
+                left + dp(2f),
+                top + dp(2f),
+                left + dp(2f) + innerWidth.coerceAtLeast(0f),
+                top + height - dp(2f),
+                dp(2.5f),
+                dp(2.5f),
+                bgPaint
+            )
+
+            canvas.drawRoundRect(
+                left + width,
+                top + dp(4f),
+                left + width + dp(2f),
+                top + height - dp(4f),
+                dp(1f),
+                dp(1f),
+                bgPaint
+            )
+        }
+
+        private fun ccIndicatorRevealV17(
+            progress: Float,
+            start: Float,
+            end: Float
+        ): Float {
+
+            return ccEaseV17(
+                ccReveal(
+                    progress.coerceIn(0f, 1f),
+                    start,
+                    end
+                )
+            )
+        }
+
+
         private fun drawIOSStatusIndicators(
             canvas: Canvas
         ) {
 
+            // ========================================================
+            // IOS27 STATUS INDICATORS V17
+            // ========================================================
+            //
+            // Верхняя системная группа не является отдельным
+            // Control Center слоем.
+            //
+            // При раскрытии:
+            // - время плавно dematerialize;
+            // - Wi-Fi/сеть/батарея слегка опускаются;
+            // - alpha постепенно уменьшается;
+            // - реальные данные берутся из Android API.
+            // ========================================================
+
             val p =
-                controlCenterProgress
-                    .coerceIn(0f, 1f)
+                controlCenterProgress.coerceIn(
+                    0f,
+                    1f
+                )
 
-            // Первые ~2 см движения:
-            // индикаторы уходят,
-            // а Control Center ещё не полностью виден.
-
-            val leftProgress =
-                ccReveal(
-                    p,
-                    0.00f,
-                    0.34f
+            val morph =
+                ccEaseV17(
+                    ccReveal(
+                        p,
+                        0.05f,
+                        0.72f
+                    )
                 )
 
             val leftAlpha =
                 (
                     1f -
-                    leftProgress
+                    morph
                 )
+                    .coerceIn(
+                        0.12f,
+                        1f
+                    )
 
-            // IOS27_STATUS_BAR_LIQUID_V10
-            // Правая группа НЕ исчезает.
-            // Wi-Fi / сеть / батарея остаются видимыми
-            // на всём протяжении раскрытия Control Center.
+            val rightAlpha =
+                (
+                    1f -
+                    morph * 0.82f
+                )
+                    .coerceIn(
+                        0.18f,
+                        1f
+                    )
 
-            val rightAlpha = 1f
+            val rightShift =
+                dp(8f) *
+                morph
 
             val time =
                 SimpleDateFormat(
@@ -503,303 +1249,202 @@ class MainActivity : Activity() {
                     Locale.getDefault()
                 ).format(Date())
 
-            // =============================================
-            // LEFT — TIME
-            // =============================================
+            // --------------------------------------------------------
+            // TIME
+            // --------------------------------------------------------
 
-            if (leftAlpha > 0f) {
-
-                textPaint.color =
-                    Color.WHITE
-
-                textPaint.alpha =
-                    (
-                        255f *
-                        leftAlpha *
-                        homeAlpha.coerceAtLeast(0.85f)
-                    )
-                        .toInt()
-                        .coerceIn(0, 255)
-
-                textPaint.textSize =
-                    dp(15f)
-
-                textPaint.typeface =
-                    Typeface.create(
-                        "sans",
-                        Typeface.BOLD
-                    )
-
-                textPaint.textAlign =
-                    Paint.Align.LEFT
-
-                // IOS27_STATUS_BAR_TIME_FADE_V11
-                //
-                // Время физически не двигается.
-                // Оно остаётся в одной координате
-                // и только постепенно исчезает
-                // вместе с раскрытием Control Center.
-
-                canvas.drawText(
-                    time,
-                    dp(22f),
-                    dp(31f),
-                    textPaint
+            textPaint.color = Color.WHITE
+            textPaint.alpha =
+                (
+                    255f *
+                    leftAlpha *
+                    homeAlpha.coerceAtLeast(0.85f)
                 )
-            }
+                    .toInt()
+                    .coerceIn(0, 255)
 
-            // =============================================
-            // RIGHT — SIGNAL / WIFI / BATTERY
-            // =============================================
-
-            if (rightAlpha > 0f) {
-
-                textPaint.color =
-                    Color.WHITE
-
-                textPaint.alpha =
-                    (
-                        255f *
-                        rightAlpha
-                    )
-                        .toInt()
-                        .coerceIn(0, 255)
-
-                val batteryManager =
-                    context.getSystemService(
-                        Context.BATTERY_SERVICE
-                    ) as? BatteryManager
-
-                val battery =
-                    batteryManager
-                        ?.getIntProperty(
-                            BatteryManager
-                                .BATTERY_PROPERTY_CAPACITY
-                        )
-                        ?.coerceIn(
-                            0,
-                            100
-                        )
-                        ?: 100
-
-                // IOS27_STATUS_BAR_RIGHT_FIXED_V11
-                //
-                // Wi-Fi / сеть / батарея:
-                // строго фиксированная позиция.
-                // Никакого translate.
-                // Никакого вертикального смещения.
-                // Никакого fade.
-                //
-                // Эта группа остаётся физически
-                // на одном месте на протяжении
-                // всего жеста.
-
-                val groupY =
-                    dp(25f)
-
-                // -----------------------------------------
-                // BATTERY
-                // -----------------------------------------
-
-                val batteryRight =
-                    width -
-                    dp(16f)
-
-                val batteryLeft =
-                    batteryRight -
-                    dp(24f)
-
-                val batteryTop =
-                    groupY -
-                    dp(6f)
-
-                bgPaint.shader = null
-                bgPaint.style =
-                    Paint.Style.STROKE
-
-                bgPaint.strokeWidth =
-                    dp(1.5f)
-
-                bgPaint.color =
-                    Color.WHITE
-
-                bgPaint.alpha =
-                    textPaint.alpha
-
-                canvas.drawRoundRect(
-                    batteryLeft,
-                    batteryTop,
-                    batteryRight,
-                    batteryTop +
-                        dp(12f),
-                    dp(3f),
-                    dp(3f),
-                    bgPaint
+            textPaint.textSize = dp(15f)
+            textPaint.typeface =
+                Typeface.create(
+                    "sans",
+                    Typeface.BOLD
                 )
+            textPaint.textAlign =
+                Paint.Align.LEFT
 
-                bgPaint.style =
-                    Paint.Style.FILL
+            canvas.drawText(
+                time,
+                dp(22f),
+                dp(31f) + rightShift * 0.15f,
+                textPaint
+            )
 
-                canvas.drawRoundRect(
-                    batteryLeft +
-                        dp(2f),
-                    batteryTop +
-                        dp(2f),
-                    batteryLeft +
-                        dp(2f) +
-                        (
-                            dp(20f) *
-                            battery /
-                            100f
+            // --------------------------------------------------------
+            // RIGHT SYSTEM INDICATORS
+            // --------------------------------------------------------
+
+            canvas.save()
+
+            canvas.translate(
+                0f,
+                rightShift
+            )
+
+            textPaint.color = Color.WHITE
+            textPaint.alpha =
+                (
+                    255f *
+                    rightAlpha
+                )
+                    .toInt()
+                    .coerceIn(0, 255)
+
+            val groupY =
+                dp(25f)
+
+            val batteryRight =
+                width -
+                dp(16f)
+
+            val batteryLeft =
+                batteryRight -
+                dp(24f)
+
+            // Battery
+            drawCCBatteryV17(
+                canvas,
+                batteryLeft,
+                groupY - dp(6f),
+                dp(24f),
+                dp(12f)
+            )
+
+            // Battery percentage
+            textPaint.textAlign =
+                Paint.Align.RIGHT
+
+            textPaint.textSize =
+                dp(10f)
+
+            textPaint.typeface =
+                Typeface.DEFAULT_BOLD
+
+            canvas.drawText(
+                buildString {
+                    append(batteryPercent)
+                    append("%")
+                },
+                batteryLeft - dp(5f),
+                groupY + dp(3.5f),
+                textPaint
+            )
+
+            // Wi-Fi
+            val wifiCx =
+                batteryLeft -
+                dp(34f)
+
+            bgPaint.style =
+                Paint.Style.STROKE
+
+            bgPaint.strokeWidth =
+                dp(1.7f)
+
+            bgPaint.strokeCap =
+                Paint.Cap.ROUND
+
+            bgPaint.color =
+                Color.WHITE
+
+            bgPaint.alpha =
+                (
+                    235f *
+                    rightAlpha
+                )
+                    .toInt()
+                    .coerceIn(0, 255)
+
+            val wifiBars =
+                if (wifiConnected) {
+                    wifiLevel.coerceIn(1, 4)
+                } else {
+                    0
+                }
+
+            if (wifiConnected) {
+
+                val arcs =
+                    min(
+                        3,
+                        wifiBars
+                    )
+
+                for (i in 0 until arcs) {
+
+                    val radius =
+                        dp(
+                            5f +
+                            i * 4f
+                        )
+
+                    canvas.drawArc(
+                        RectF(
+                            wifiCx - radius,
+                            groupY - radius,
+                            wifiCx + radius,
+                            groupY + radius + dp(2f)
                         ),
-                    batteryTop +
-                        dp(10f),
-                    dp(2f),
-                    dp(2f),
-                    bgPaint
-                )
-
-                canvas.drawRoundRect(
-                    batteryRight,
-                    batteryTop +
-                        dp(3.5f),
-                    batteryRight +
-                        dp(2f),
-                    batteryTop +
-                        dp(8.5f),
-                    dp(1f),
-                    dp(1f),
-                    bgPaint
-                )
-
-                // -----------------------------------------
-                // BATTERY %
-                // -----------------------------------------
-
-                textPaint.textAlign =
-                    Paint.Align.RIGHT
-
-                textPaint.textSize =
-                    dp(10f)
-
-                textPaint.typeface =
-                    Typeface.DEFAULT_BOLD
-
-                canvas.drawText(
-                    "$battery%",
-                    batteryLeft -
-                        dp(5f),
-                    groupY +
-                        dp(3.5f),
-                    textPaint
-                )
-
-                // -----------------------------------------
-                // WIFI
-                // -----------------------------------------
-
-                val wifiCx =
-                    batteryLeft -
-                    dp(34f)
-
-                bgPaint.style =
-                    Paint.Style.STROKE
-
-                bgPaint.strokeWidth =
-                    dp(1.7f)
-
-                bgPaint.strokeCap =
-                    Paint.Cap.ROUND
-
-                bgPaint.color =
-                    Color.WHITE
-
-                bgPaint.alpha =
-                    textPaint.alpha
-
-                canvas.drawArc(
-                    RectF(
-                        wifiCx -
-                            dp(9f),
-                        groupY -
-                            dp(7f),
-                        wifiCx +
-                            dp(9f),
-                        groupY +
-                            dp(9f)
-                    ),
-                    225f,
-                    90f,
-                    false,
-                    bgPaint
-                )
-
-                canvas.drawArc(
-                    RectF(
-                        wifiCx -
-                            dp(6f),
-                        groupY -
-                            dp(4f),
-                        wifiCx +
-                            dp(6f),
-                        groupY +
-                            dp(8f)
-                    ),
-                    225f,
-                    90f,
-                    false,
-                    bgPaint
-                )
+                        225f,
+                        90f,
+                        false,
+                        bgPaint
+                    )
+                }
 
                 bgPaint.style =
                     Paint.Style.FILL
 
                 canvas.drawCircle(
                     wifiCx,
-                    groupY +
-                        dp(4f),
-                    dp(1.8f),
+                    groupY + dp(4f),
+                    dp(1.7f),
                     bgPaint
                 )
 
-                // -----------------------------------------
-                // MOBILE SIGNAL
-                // -----------------------------------------
+            } else {
 
-                val signalRight =
-                    wifiCx -
-                    dp(19f)
+                bgPaint.style =
+                    Paint.Style.STROKE
 
-                bgPaint.color =
-                    Color.WHITE
-
-                for (i in 0 until 4) {
-
-                    val barHeight =
-                        dp(
-                            3f +
-                            i * 2.5f
-                        )
-
-                    val x =
-                        signalRight -
-                        dp(4f) *
-                        (3 - i)
-
-                    canvas.drawRoundRect(
-                        x,
-                        groupY -
-                            barHeight,
-                        x +
-                            dp(3f),
-                        groupY,
-                        dp(1.3f),
-                        dp(1.3f),
-                        bgPaint
+                bgPaint.alpha =
+                    (
+                        150f *
+                        rightAlpha
                     )
-                }
+                        .toInt()
+                        .coerceIn(0, 255)
 
+                canvas.drawCircle(
+                    wifiCx,
+                    groupY,
+                    dp(2f),
+                    bgPaint
+                )
             }
+
+            // Mobile signal
+            val signalCx =
+                wifiCx -
+                dp(19f)
+
+            drawCCBarsV17(
+                canvas,
+                signalCx,
+                groupY,
+                mobileLevel
+            )
+
+            canvas.restore()
 
             textPaint.alpha = 255
             textPaint.textAlign =
@@ -808,6 +1453,8 @@ class MainActivity : Activity() {
             bgPaint.alpha = 255
             bgPaint.style =
                 Paint.Style.FILL
+            bgPaint.strokeCap =
+                Paint.Cap.BUTT
         }
 
         private var searchMode = false
@@ -867,7 +1514,24 @@ class MainActivity : Activity() {
             }
 
             reloadApps()
+
+
+            startSystemIndicatorObserversV17()
         }
+        fun isControlCenterVisibleV17(): Boolean {
+
+            return controlCenter ||
+                controlCenterProgress > 0.01f
+        }
+
+        fun closeControlCenterFromActivityV17() {
+
+            settleControlCenterV17(
+                opening = false,
+                releaseVelocityPx = 0f
+            )
+        }
+
 
         fun startHomeAnimation() {
 
@@ -2232,21 +2896,22 @@ class MainActivity : Activity() {
         // Progress напрямую связан с движением пальца.
 
 
-        // ========================================================
-        // IOS27_CONTROL_CENTER_PHYSICS_V14
-        // ========================================================
+        // ============================================================
+        // IOS27 CONTROL CENTER V17
+        // ============================================================
         //
-        // Физика Control Center:
+        // Gesture driven:
+        // - direct finger tracking
+        // - velocity
+        // - inertia
         // - damped spring
         // - overshoot
-        // - cascade materialization
-        // - scale
-        // - alpha
-        // - translation
-        // - interactive gesture
-        // ========================================================
+        // - elastic stretch
+        // - internal stagger
+        // - indicator spring
+        // ============================================================
 
-        private fun ccSpringV14(
+        private fun ccEaseV17(
             value: Float
         ): Float {
 
@@ -2256,22 +2921,33 @@ class MainActivity : Activity() {
                     1f
                 )
 
-            val result =
-                1f -
-                kotlin.math.exp(
-                    (-7.8f * t).toDouble()
-                ).toFloat() *
-                kotlin.math.cos(
-                    (10.5f * t).toDouble()
-                ).toFloat()
-
-            return result.coerceIn(
-                0f,
-                1.04f
+            return t * t * (
+                3f -
+                2f * t
             )
         }
 
-        private fun ccEaseV14(
+        private fun ccRubberV17(
+            value: Float
+        ): Float {
+
+            val v =
+                value.coerceAtLeast(0f)
+
+            return (
+                v /
+                (
+                    1f +
+                    v * 5.5f
+                )
+            )
+                .coerceIn(
+                    0f,
+                    0.12f
+                )
+        }
+
+        private fun ccSpringScalarV17(
             value: Float
         ): Float {
 
@@ -2281,33 +2957,220 @@ class MainActivity : Activity() {
                     1f
                 )
 
-            return t * t * (3f - 2f * t)
+            val envelope =
+                kotlin.math.exp(
+                    (-7.2f * t).toDouble()
+                )
+                    .toFloat()
+
+            val wave =
+                kotlin.math.cos(
+                    (10.8f * t).toDouble()
+                )
+                    .toFloat()
+
+            return (
+                1f -
+                envelope * wave
+            )
+                .coerceIn(
+                    0f,
+                    1.05f
+                )
         }
 
-        private fun ccRevealV14(
-            value: Float,
+        private fun ccSpringProgressV17(
+            start: Float,
+            target: Float,
+            initialVelocity: Float,
+            fraction: Float,
+            durationMs: Long
+        ): Float {
+
+            val zeta = 0.72f
+            val omega0 = 12.0f
+
+            val omegaD =
+                omega0 *
+                kotlin.math.sqrt(
+                    1f -
+                    zeta * zeta
+                )
+
+            val time =
+                (
+                    fraction.coerceIn(
+                        0f,
+                        1f
+                    ) *
+                    durationMs.toFloat() /
+                    1000f
+                )
+
+            val x0 =
+                start -
+                target
+
+            val v0 =
+                initialVelocity.coerceIn(
+                    -3.5f,
+                    3.5f
+                )
+
+            val b =
+                (
+                    v0 +
+                    zeta *
+                    omega0 *
+                    x0
+                ) /
+                omegaD
+
+            val envelope =
+                kotlin.math.exp(
+                    (
+                        -zeta *
+                        omega0 *
+                        time
+                    ).toDouble()
+                )
+                    .toFloat()
+
+            val oscillation =
+                x0 *
+                kotlin.math.cos(
+                    (
+                        omegaD *
+                        time
+                    ).toDouble()
+                )
+                    .toFloat() +
+                b *
+                kotlin.math.sin(
+                    (
+                        omegaD *
+                        time
+                    ).toDouble()
+                )
+                    .toFloat()
+
+            return (
+                target +
+                envelope *
+                oscillation
+            )
+                .coerceIn(
+                    0f,
+                    1.14f
+                )
+        }
+
+        private fun controlCenterPanelHeightV17(): Float {
+
+            val top =
+                dp(10f)
+
+            val groupHeight =
+                dp(118f)
+
+            val gap =
+                dp(10f)
+
+            val sliderHeight =
+                dp(58f)
+
+            val sliderGap =
+                dp(10f)
+
+            val bottomControlsTop =
+                top +
+                groupHeight +
+                gap +
+                sliderHeight +
+                sliderGap +
+                sliderHeight +
+                dp(20f)
+
+            return (
+                bottomControlsTop +
+                dp(78f) -
+                top +
+                dp(18f)
+            )
+        }
+
+        private fun controlCenterTravelV17(): Float {
+
+            return (
+                controlCenterPanelHeightV17() +
+                dp(16f)
+            )
+        }
+
+        private fun drawCCBackdropV17(
+            canvas: Canvas,
+            progress: Float
+        ) {
+
+            val p =
+                progress.coerceIn(
+                    0f,
+                    1f
+                )
+
+            if (p <= 0f)
+                return
+
+            val alpha =
+                (
+                    132f *
+                    ccEaseV17(p)
+                )
+                    .toInt()
+                    .coerceIn(
+                        0,
+                        132
+                    )
+
+            bgPaint.style =
+                Paint.Style.FILL
+
+            bgPaint.color =
+                Color.argb(
+                    alpha,
+                    0,
+                    0,
+                    0
+                )
+
+            canvas.drawRect(
+                0f,
+                0f,
+                width.toFloat(),
+                height.toFloat(),
+                bgPaint
+            )
+        }
+
+        private fun ccRevealV17(
+            progress: Float,
             start: Float,
             end: Float
         ): Float {
 
-            if (value <= start)
-                return 0f
-
-            if (value >= end)
-                return 1f
-
-            return ccEaseV14(
-                (
-                    (value - start) /
-                    (end - start)
-                ).coerceIn(
-                    0f,
-                    1f
+            return ccEaseV17(
+                ccReveal(
+                    progress.coerceIn(
+                        0f,
+                        1f
+                    ),
+                    start,
+                    end
                 )
             )
         }
 
-        private fun drawCCPhysicalV14(
+        private fun drawCCPhysicalV17(
             canvas: Canvas,
             progress: Float,
             start: Float,
@@ -2317,7 +3180,7 @@ class MainActivity : Activity() {
         ) {
 
             val reveal =
-                ccRevealV14(
+                ccRevealV17(
                     progress,
                     start,
                     end
@@ -2329,17 +3192,21 @@ class MainActivity : Activity() {
             canvas.save()
 
             val spring =
-                ccSpringV14(
+                ccSpringScalarV17(
                     reveal
                 )
 
-            val scale =
-                0.86f +
-                0.14f * spring
+            val elementScale =
+                0.90f +
+                0.10f *
+                spring
 
             val translation =
                 travel *
-                (1f - reveal)
+                (
+                    1f -
+                    reveal
+                )
 
             canvas.translate(
                 width / 2f,
@@ -2347,8 +3214,8 @@ class MainActivity : Activity() {
             )
 
             canvas.scale(
-                scale,
-                scale,
+                elementScale,
+                elementScale,
                 0f,
                 0f
             )
@@ -2360,13 +3227,15 @@ class MainActivity : Activity() {
 
             val alpha =
                 (
-                    255f *
-                    ccEaseV14(reveal)
+                    245f *
+                    ccEaseV17(
+                        reveal
+                    )
                 )
                     .toInt()
                     .coerceIn(
                         0,
-                        255
+                        245
                     )
 
             val layer =
@@ -2387,94 +3256,48 @@ class MainActivity : Activity() {
             canvas.restore()
         }
 
-        private fun drawCCBackdropV14(
-            canvas: Canvas,
-            progress: Float
+        private fun drawControlCenter(
+            canvas: Canvas
         ) {
 
-            val p =
-                progress.coerceIn(
-                    0f,
-                    1f
-                )
+            // ========================================================
+            // IOS27 CONTROL CENTER RENDERER V17
+            // ========================================================
 
-            if (p <= 0f)
-                return
-
-            bgPaint.color =
-                Color.argb(
-                    (
-                        120f *
-                        ccEaseV14(p)
-                    )
-                        .toInt()
-                        .coerceIn(
-                            0,
-                            120
-                        ),
-                    0,
-                    0,
-                    0
-                )
-
-            canvas.drawRect(
-                0f,
-                0f,
-                width.toFloat(),
-                height.toFloat(),
-                bgPaint
-            )
-        }
-
-        private fun drawControlCenter(canvas: Canvas) {
-
-            // IOS27_CONTROL_CENTER_RENDERER_V14
-
-            val p =
+            val rawProgress =
                 controlCenterProgress.coerceIn(
                     0f,
+                    1.14f
+                )
+
+            if (
+                rawProgress <= 0f &&
+                !controlCenter
+            ) {
+                return
+            }
+
+            val p =
+                rawProgress.coerceIn(
+                    0f,
                     1f
                 )
 
-            if (p <= 0f)
-                return
+            val overscroll =
+                (
+                    rawProgress -
+                    1f
+                )
+                    .coerceAtLeast(0f)
 
             val w =
                 width.toFloat()
-
-            val h =
-                height.toFloat()
-
-            // ----------------------------------------------------
-            // BACKDROP
-            // ----------------------------------------------------
-
-            drawCCBackdropV14(
-                canvas,
-                p
-            )
-
-            // ----------------------------------------------------
-            // PANEL PHYSICS
-            // ----------------------------------------------------
-
-            val panelProgress =
-                if (controlCenterInteractive) {
-                    p
-                } else {
-                    ccEaseV14(p)
-                }
-
-            val spring =
-                ccSpringV14(
-                    panelProgress
-                )
 
             val margin =
                 dp(14f)
 
             val top =
-                dp(18f)
+                dp(10f)
 
             val gap =
                 dp(10f)
@@ -2505,60 +3328,82 @@ class MainActivity : Activity() {
                 dp(20f)
 
             val panelHeight =
-                bottomControlsTop +
-                dp(78f) -
-                top +
-                dp(18f)
+                controlCenterPanelHeightV17()
+
+            drawCCBackdropV17(
+                canvas,
+                p
+            )
+
+            // --------------------------------------------------------
+            // MAIN PANEL PHYSICS
+            // --------------------------------------------------------
 
             val slide =
                 -panelHeight *
                 (
                     1f -
-                    panelProgress
+                    p
                 )
 
-            // IOS27_CONTROL_CENTER_PANEL_SCALE_V15
-            // Меньше начальный scale -> заметнее физическое
-            // materialize, но без резкого zoom.
-            val scale =
-                0.90f +
-                0.10f *
-                spring
+            val elastic =
+                ccRubberV17(
+                    overscroll
+                )
+
+            // Stretch grows from the top anchor.
+            val scaleX =
+                (
+                    0.94f +
+                    0.06f * p +
+                    elastic * 0.12f
+                )
+                    .coerceIn(
+                        0.94f,
+                        1.055f
+                    )
+
+            val scaleY =
+                (
+                    0.80f +
+                    0.20f * p +
+                    elastic * 0.18f
+                )
+                    .coerceIn(
+                        0.80f,
+                        1.09f
+                    )
 
             val centerX =
                 w / 2f
-
-            val centerY =
-                top +
-                panelHeight / 2f
 
             canvas.save()
 
             canvas.translate(
                 centerX,
-                centerY + slide
+                top + slide
             )
 
             canvas.scale(
-                scale,
-                scale
+                scaleX,
+                scaleY
             )
 
             canvas.translate(
                 -centerX,
-                -centerY
+                -top
             )
 
-            // ----------------------------------------------------
-            // CONNECTIVITY
-            // ----------------------------------------------------
+            // --------------------------------------------------------
+            // CONNECTIVITY + REAL INDICATORS
+            // --------------------------------------------------------
 
-            drawCCPhysicalV14(
+            drawCCPhysicalV17(
                 canvas,
-                p,
-                0.18f,
-                0.48f,
-                dp(26f)
+                rawProgress,
+                0.06f,
+                0.40f,
+                dp(20f)
             ) {
 
                 glassPaint.style =
@@ -2566,7 +3411,7 @@ class MainActivity : Activity() {
 
                 glassPaint.color =
                     Color.argb(
-                        120,
+                        150,
                         245,
                         248,
                         255
@@ -2584,7 +3429,7 @@ class MainActivity : Activity() {
 
                 glassPaint.color =
                     Color.argb(
-                        42,
+                        38,
                         255,
                         255,
                         255
@@ -2594,59 +3439,188 @@ class MainActivity : Activity() {
                     margin + dp(1f),
                     top + dp(1f),
                     margin + groupWidth - dp(1f),
-                    top + dp(31f),
+                    top + dp(32f),
                     dp(27f),
                     dp(27f),
                     glassPaint
                 )
 
+                val indicatorReveal =
+                    ccIndicatorRevealV17(
+                        rawProgress,
+                        0.12f,
+                        0.58f
+                    )
+
+                canvas.save()
+
+                val indicatorOffset =
+                    dp(10f) *
+                    (
+                        1f -
+                        indicatorReveal
+                    )
+
+                val indicatorSpring =
+                    ccSpringScalarV17(
+                        indicatorReveal
+                    )
+
+                canvas.translate(
+                    0f,
+                    indicatorOffset -
+                    dp(2f) *
+                    indicatorSpring
+                )
+
+                val indicatorAlpha =
+                    (
+                        255f *
+                        indicatorReveal
+                    )
+                        .toInt()
+                        .coerceIn(
+                            0,
+                            255
+                        )
+
+                val oldAlpha =
+                    textPaint.alpha
+
+                textPaint.alpha =
+                    indicatorAlpha
+
+                // Wi-Fi
                 drawCCCircle(
                     canvas,
                     margin + dp(37f),
-                    top + dp(36f),
+                    top + dp(38f),
                     dp(23f),
                     "Wi",
-                    true
+                    wifiConnected
                 )
 
+                // Bluetooth
                 drawCCCircle(
                     canvas,
                     margin + dp(96f),
-                    top + dp(36f),
+                    top + dp(38f),
                     dp(23f),
                     "BT",
-                    true
+                    bluetoothState ==
+                        android.bluetooth.BluetoothAdapter
+                            .STATE_ON
                 )
 
+                // Mobile network
                 drawCCCircle(
                     canvas,
                     margin + dp(37f),
-                    top + dp(86f),
+                    top + dp(88f),
+                    dp(23f),
+                    mobileType.take(3),
+                    mobileConnected
+                )
+
+                // Airplane remains a local visual control.
+                drawCCCircle(
+                    canvas,
+                    margin + dp(96f),
+                    top + dp(88f),
                     dp(23f),
                     "✈",
                     false
                 )
 
-                drawCCCircle(
+                // Wi-Fi signal number/bars
+                drawCCBarsV17(
                     canvas,
-                    margin + dp(96f),
+                    margin + dp(145f),
+                    top + dp(39f),
+                    wifiLevel
+                )
+
+                // Cellular signal bars
+                drawCCBarsV17(
+                    canvas,
+                    margin + dp(145f),
+                    top + dp(89f),
+                    mobileLevel
+                )
+
+                textPaint.color =
+                    Color.WHITE
+
+                textPaint.textSize =
+                    dp(9f)
+
+                textPaint.typeface =
+                    Typeface.DEFAULT_BOLD
+
+                textPaint.textAlign =
+                    Paint.Align.LEFT
+
+                canvas.drawText(
+                    if (wifiConnected)
+                        "Wi-Fi"
+                    else
+                        "Нет Wi-Fi",
+                    margin + dp(16f),
+                    top + dp(18f),
+                    textPaint
+                )
+
+                textPaint.textSize =
+                    dp(8f)
+
+                textPaint.typeface =
+                    Typeface.DEFAULT
+
+                canvas.drawText(
+                    if (mobileConnected)
+                        mobileType
+                    else
+                        "Нет сети",
+                    margin + dp(74f),
+                    top + dp(18f),
+                    textPaint
+                )
+
+                canvas.drawText(
+                    if (batteryCharging)
+                        "Зарядка"
+                    else
+                        "$batteryPercent%",
+                    margin + dp(126f),
+                    top + dp(18f),
+                    textPaint
+                )
+
+                textPaint.alpha =
+                    oldAlpha
+
+                canvas.restore()
+
+                // Battery block remains inside the main panel transform.
+                drawCCBatteryV17(
+                    canvas,
+                    margin + groupWidth - dp(54f),
                     top + dp(86f),
-                    dp(23f),
-                    "M",
-                    false
+                    dp(36f),
+                    dp(16f)
                 )
             }
 
-            // ----------------------------------------------------
+            // --------------------------------------------------------
             // MEDIA
-            // ----------------------------------------------------
+            // --------------------------------------------------------
 
-            drawCCPhysicalV14(
+            drawCCPhysicalV17(
                 canvas,
-                p,
-                0.30f,
-                0.62f,
-                dp(30f)
+                rawProgress,
+                0.15f,
+                0.49f,
+                dp(26f)
             ) {
 
                 val mediaLeft =
@@ -2654,9 +3628,12 @@ class MainActivity : Activity() {
                     groupWidth +
                     gap
 
+                glassPaint.style =
+                    Paint.Style.FILL
+
                 glassPaint.color =
                     Color.argb(
-                        120,
+                        150,
                         245,
                         248,
                         255
@@ -2674,7 +3651,7 @@ class MainActivity : Activity() {
 
                 glassPaint.color =
                     Color.argb(
-                        38,
+                        36,
                         255,
                         255,
                         255
@@ -2684,21 +3661,21 @@ class MainActivity : Activity() {
                     mediaLeft + dp(1f),
                     top + dp(1f),
                     mediaLeft + groupWidth - dp(1f),
-                    top + dp(31f),
+                    top + dp(32f),
                     dp(27f),
                     dp(27f),
                     glassPaint
                 )
 
-                textPaint.alpha = 255
-                textPaint.color =
-                    Color.WHITE
+                textPaint.alpha = 245
+                textPaint.color = Color.WHITE
+                textPaint.typeface =
+                    Typeface.DEFAULT_BOLD
+                textPaint.textAlign =
+                    Paint.Align.LEFT
 
                 textPaint.textSize =
                     dp(12f)
-
-                textPaint.typeface =
-                    Typeface.DEFAULT_BOLD
 
                 canvas.drawText(
                     "Сейчас играет",
@@ -2748,16 +3725,16 @@ class MainActivity : Activity() {
                 )
             }
 
-            // ----------------------------------------------------
+            // --------------------------------------------------------
             // BRIGHTNESS / VOLUME
-            // ----------------------------------------------------
+            // --------------------------------------------------------
 
-            drawCCPhysicalV14(
+            drawCCPhysicalV17(
                 canvas,
-                p,
-                0.42f,
-                0.72f,
-                dp(34f)
+                rawProgress,
+                0.29f,
+                0.69f,
+                dp(30f)
             ) {
 
                 val sliderY =
@@ -2778,24 +3755,24 @@ class MainActivity : Activity() {
                     canvas,
                     margin,
                     sliderY +
-                        sliderHeight +
-                        sliderGap,
+                    sliderHeight +
+                    sliderGap,
                     w - margin * 2f,
                     sliderHeight,
                     "♪"
                 )
             }
 
-            // ----------------------------------------------------
+            // --------------------------------------------------------
             // BOTTOM CONTROLS
-            // ----------------------------------------------------
+            // --------------------------------------------------------
 
-            drawCCPhysicalV14(
+            drawCCPhysicalV17(
                 canvas,
-                p,
-                0.56f,
-                0.88f,
-                dp(38f)
+                rawProgress,
+                0.45f,
+                0.90f,
+                dp(36f)
             ) {
 
                 val smallY =
@@ -2819,8 +3796,8 @@ class MainActivity : Activity() {
                 drawCCSmall(
                     canvas,
                     margin +
-                        smallWidth +
-                        dp(10f),
+                    smallWidth +
+                    dp(10f),
                     smallY,
                     smallWidth,
                     "Камера"
@@ -2829,10 +3806,10 @@ class MainActivity : Activity() {
                 drawCCSmall(
                     canvas,
                     margin +
-                        (
-                            smallWidth +
-                            dp(10f)
-                        ) * 2f,
+                    (
+                        smallWidth +
+                        dp(10f)
+                    ) * 2f,
                     smallY,
                     smallWidth,
                     "QR"
@@ -2841,21 +3818,27 @@ class MainActivity : Activity() {
                 drawCCSmall(
                     canvas,
                     margin +
-                        (
-                            smallWidth +
-                            dp(10f)
-                        ) * 3f,
+                    (
+                        smallWidth +
+                        dp(10f)
+                    ) * 3f,
                     smallY,
                     smallWidth,
                     "+"
                 )
             }
 
-            textPaint.alpha = 255
-
             canvas.restore()
-        }
 
+            textPaint.alpha = 255
+            textPaint.textAlign =
+                Paint.Align.LEFT
+
+            glassPaint.alpha = 255
+            bgPaint.alpha = 255
+            bgPaint.style =
+                Paint.Style.FILL
+        }
 
 
     private fun drawCCCircle(
@@ -3069,121 +4052,163 @@ class MainActivity : Activity() {
 
         // -----------------------------------------
 
-                private fun openControlCenter() {
+                        // ============================================================
+        // IOS27 CONTROL CENTER V17 - SPRING SETTLE
+        // ============================================================
 
-            // IOS27_CONTROL_CENTER_ANIMATION_V14
+        private fun settleControlCenterV17(
+            opening: Boolean,
+            releaseVelocityPx: Float
+        ) {
 
-            controlCenter = true
+            val start =
+                controlCenterProgress
+                    .coerceIn(
+                        0f,
+                        1.14f
+                    )
+
+            val target =
+                if (opening)
+                    1f
+                else
+                    0f
+
+            if (opening) {
+                controlCenter = true
+            }
+
             controlCenterGesture = false
             controlCenterInteractive = false
 
-            animateNavigationBarSpring(
-                opening = true
-            )
-
+            navigationBarAnimator?.cancel()
             ccAnimator?.cancel()
 
-            val start =
-                controlCenterProgress.coerceIn(
-                    0f,
-                    1f
+            ccVelocityTracker?.recycle()
+            ccVelocityTracker = null
+
+            val travel =
+                controlCenterTravelV17()
+                    .coerceAtLeast(
+                        dp(1f)
+                    )
+
+            val initialVelocity =
+                (
+                    releaseVelocityPx /
+                    travel
                 )
+                    .coerceIn(
+                        -3.5f,
+                        3.5f
+                    )
+
+            val duration =
+                if (opening)
+                    620L
+                else
+                    500L
+
+            animateNavigationBarSpring(
+                opening = opening
+            )
 
             ccAnimator =
-                ValueAnimator.ofFloat(
-                    start,
-                    1f
-                ).apply {
+                ValueAnimator
+                    .ofFloat(
+                        0f,
+                        1f
+                    )
+                    .apply {
 
-                    duration = 430L
+                        interpolator =
+                            android.view.animation
+                                .LinearInterpolator()
 
-                    addUpdateListener { animator ->
+                        this.duration =
+                            duration
 
-                        val raw =
-                            animator.animatedValue
-                                as Float
+                        addUpdateListener {
 
-                        controlCenterProgress =
-                            ccSpringV14(
-                                raw
-                            )
-                                .coerceIn(
-                                    0f,
-                                    1f
+                            val fraction =
+                                it.animatedValue
+                                    as Float
+
+                            controlCenterProgress =
+                                ccSpringProgressV17(
+                                    start,
+                                    target,
+                                    initialVelocity,
+                                    fraction,
+                                    duration
                                 )
 
-                        invalidate()
-                    }
-
-                    start()
-                }
-        }
-
-
-
-                private fun closeControlCenter() {
-
-            // IOS27_CONTROL_CENTER_ANIMATION_V14
-
-            controlCenterGesture = false
-            controlCenterInteractive = false
-
-            animateNavigationBarSpring(
-                opening = false
-            )
-
-            ccAnimator?.cancel()
-
-            val start =
-                controlCenterProgress.coerceIn(
-                    0f,
-                    1f
-                )
-
-            ccAnimator =
-                ValueAnimator.ofFloat(
-                    start,
-                    0f
-                ).apply {
-
-                    duration = 300L
-
-                    addUpdateListener { animator ->
-
-                        val raw =
-                            animator.animatedValue
-                                as Float
-
-                        val reversed =
-                            1f -
-                            ccSpringV14(
-                                1f - raw
-                            )
-
-                        controlCenterProgress =
-                            reversed.coerceIn(
-                                0f,
-                                1f
-                            )
-
-                        if (
-                            controlCenterProgress <=
-                            0.005f
-                        ) {
-
-                            controlCenterProgress = 0f
-                            controlCenter = false
-                            controlCenterInteractive = false
+                            postInvalidateOnAnimation()
                         }
 
-                        invalidate()
-                    }
+                        addListener(
+                            object :
+                                android.animation.Animator.AnimatorListener {
 
-                    start()
-                }
+                                override fun onAnimationStart(
+                                    animation:
+                                        android.animation.Animator
+                                ) {
+                                }
+
+                                override fun onAnimationEnd(
+                                    animation:
+                                        android.animation.Animator
+                                ) {
+
+                                    controlCenterProgress =
+                                        target
+
+                                    if (!opening) {
+                                        controlCenter = false
+                                    }
+
+                                    controlCenterInteractive =
+                                        false
+
+                                    ccAnimator = null
+
+                                    postInvalidateOnAnimation()
+                                }
+
+                                override fun onAnimationCancel(
+                                    animation:
+                                        android.animation.Animator
+                                ) {
+                                }
+
+                                override fun onAnimationRepeat(
+                                    animation:
+                                        android.animation.Animator
+                                ) {
+                                }
+                            }
+                        )
+
+                        start()
+                    }
         }
 
+        private fun openControlCenter() {
 
+            settleControlCenterV17(
+                opening = true,
+                releaseVelocityPx = 0f
+            )
+        }
+
+        private fun closeControlCenter() {
+
+            settleControlCenterV17(
+                opening = false,
+                releaseVelocityPx = 0f
+            )
+        }
 
     // TOUCH
     // -----------------------------------------
@@ -3197,13 +4222,33 @@ class MainActivity : Activity() {
 
         when (event.actionMasked) {
 
+            // ========================================================
+            // DOWN
+            // ========================================================
+
             MotionEvent.ACTION_DOWN -> {
 
                 downX = x
                 downY = y
+                ccGestureLastY = y
+                ccGestureDownTime =
+                    System.currentTimeMillis()
+
                 dragging = false
 
-                // Control Center уже открыт.
+                ccVelocityTracker?.recycle()
+
+                ccVelocityTracker =
+                    android.view.VelocityTracker.obtain()
+
+                ccVelocityTracker?.addMovement(
+                    event
+                )
+
+                // ----------------------------------------------------
+                // EXISTING CONTROL CENTER
+                // ----------------------------------------------------
+
                 if (controlCenter) {
 
                     controlCenterGesture = true
@@ -3212,6 +4257,13 @@ class MainActivity : Activity() {
                     controlCenterStartY = y
                     controlCenterStartX = x
 
+                    ccGestureStartProgress =
+                        controlCenterProgress
+                            .coerceIn(
+                                0f,
+                                1.14f
+                            )
+
                     ccAnimator?.cancel()
 
                     pressedIndex = -1
@@ -3220,27 +4272,33 @@ class MainActivity : Activity() {
                     return true
                 }
 
-                // iPhone Face ID:
-                // начало Control Center только
-                // из верхнего правого участка.
-                // IOS27_CONTROL_CENTER_GESTURE_V15
+                // ----------------------------------------------------
+                // CLOSED CONTROL CENTER
+                // ----------------------------------------------------
                 //
-                // Верхняя самая кромка Android/Samsung может
-                // перехватываться системным notification shade.
-                //
-                // Поэтому приложение принимает жест немного
-                // ниже верхней границы.
-                //
-                // Это позволяет реально открыть наш Control Center
-                // на Android 11 без root/device-owner.
+                // Absolute top edge can be consumed by Android/Samsung.
+                // Therefore the application accepts a slightly lower
+                // right-corner region while preserving the system edge
+                // gesture as much as Android permits.
+                // ----------------------------------------------------
+
+                val topGestureLimit =
+                    dp(120f)
+
+                val rightGestureLimit =
+                    width *
+                    0.50f
+
                 controlCenterGesture =
-                    y <= dp(150f) &&
-                    x >= width * 0.45f
+                    y <= topGestureLimit &&
+                    x >= rightGestureLimit
 
                 if (controlCenterGesture) {
 
                     controlCenterStartY = y
                     controlCenterStartX = x
+
+                    ccGestureStartProgress = 0f
 
                     pressedIndex = -1
                     pressedScale = 1f
@@ -3249,202 +4307,347 @@ class MainActivity : Activity() {
                 }
 
                 pressedIndex =
-                    getAppIndex(x, y)
+                    getAppIndex(
+                        x,
+                        y
+                    )
 
                 if (pressedIndex >= 0) {
 
                     pressedScale = 0.94f
+
                     invalidate()
                 }
 
                 return true
             }
+
+            // ========================================================
+            // MOVE
+            // ========================================================
 
             MotionEvent.ACTION_MOVE -> {
 
-                val dx = x - downX
-                val dy = y - downY
+                ccVelocityTracker?.addMovement(
+                    event
+                )
 
-                // OPEN CONTROL CENTER
+                val dx =
+                    x -
+                    downX
+
+                val dy =
+                    y -
+                    downY
+
+                val touchSlop =
+                    (
+                        ViewConfiguration
+                            .get(context)
+                            .scaledTouchSlop
+                    )
+                        .coerceAtLeast(
+                            dp(4f)
+                                .toInt()
+                        )
+
+                // ----------------------------------------------------
+                // OPENING
+                // ----------------------------------------------------
 
                 if (
                     !controlCenter &&
-                    controlCenterGesture &&
-                    dy > dp(2f)
+                    controlCenterGesture
                 ) {
 
-                    dragging = true
+                    if (
+                        dy >
+                        touchSlop
+                    ) {
 
-                    // IOS27_CONTROL_CENTER_GESTURE_V7
-                    //
-                    // Настоящее интерактивное открытие.
-                    // Панель видна уже с первых пикселей свайпа.
-                    // controlCenter остаётся false до момента
-                    // завершения жеста.
+                        dragging = true
 
-                    controlCenterInteractive = true
+                        controlCenterInteractive =
+                            true
 
-                    // IOS27_NAVIGATION_BAR_INTERACTIVE_V12
-                    //
-                    // Пока пальцем управляется Control Center,
-                    // spring не должен бороться с жестом.
+                        navigationBarAnimator?.cancel()
+                        ccAnimator?.cancel()
 
-                    // IOS27_NAVIGATION_INTERACTIVE_PHYSICS_V13
+                        navigationBarSpringScale =
+                            1f
 
-                    navigationBarAnimator?.cancel()
+                        val travel =
+                            controlCenterTravelV17()
 
-                    // В начале каждого нового жеста
-                    // возвращаем spring к нейтральному состоянию.
+                        val raw =
+                            dy /
+                            travel
 
-                    navigationBarSpringScale = 1f
-
-                    ccAnimator?.cancel()
-
-                    // IOS27_CONTROL_CENTER_INTERACTIVE_V15
-                    //
-                    // Более короткая дистанция делает панель
-                    // визуально отзывчивой уже в начале свайпа.
-                    controlCenterProgress =
-                        (
-                            dy / dp(220f)
-                        ).coerceIn(0f, 1f)
-
-                    // С первых реальных пикселей жеста
-                    // считаем Control Center активным.
-                    if (controlCenterProgress > 0f) {
-                        invalidate()
-                    }
-
-                    invalidate()
-
-                    return true
-                }
-
-                // CONTROL CENTER OPEN
-
-                if (controlCenter) {
-
-                    val closeDistance =
-                        controlCenterStartY - y
-
-                    // Как только пользователь начинает двигать
-                    // открытый Control Center, управление снова
-                    // передаётся пальцу.
-
-                    controlCenterInteractive = true
-
-                    // Свайп вверх — закрытие.
-                    if (closeDistance > 0f) {
+                        val progress =
+                            if (raw <= 1f) {
+                                raw.coerceIn(
+                                    0f,
+                                    1f
+                                )
+                            } else {
+                                (
+                                    1f +
+                                    ccRubberV17(
+                                        raw - 1f
+                                    )
+                                )
+                                    .coerceIn(
+                                        0f,
+                                        1.12f
+                                    )
+                            }
 
                         controlCenterProgress =
-                            1f -
-                            (
-                                closeDistance / dp(260f)
-                            ).coerceIn(0f, 1f)
+                            progress
 
-                        invalidate()
+                        ccGestureLastY = y
+
+                        postInvalidateOnAnimation()
 
                         return true
                     }
 
-                    // Движение вниз.
-                    if (dy > 0f) {
+                    return true
+                }
 
-                        controlCenterProgress = 1f
+                // ----------------------------------------------------
+                // ALREADY OPEN - INTERACTIVE CLOSE / OVERSCROLL
+                // ----------------------------------------------------
 
-                        invalidate()
+                if (controlCenter) {
+
+                    controlCenterInteractive =
+                        true
+
+                    val travel =
+                        controlCenterTravelV17()
+
+                    val deltaFromStart =
+                        y -
+                        controlCenterStartY
+
+                    if (
+                        deltaFromStart < 0f
+                    ) {
+
+                        // Finger moving up:
+                        // panel follows finger directly.
+                        val raw =
+                            1f +
+                            (
+                                deltaFromStart /
+                                travel
+                            )
+
+                        controlCenterProgress =
+                            raw.coerceIn(
+                                0f,
+                                1f
+                            )
+
+                    } else {
+
+                        // Downward pull while already open:
+                        // small elastic overscroll.
+                        val raw =
+                            1f +
+                            (
+                                deltaFromStart /
+                                travel
+                            )
+
+                        controlCenterProgress =
+                            (
+                                1f +
+                                ccRubberV17(
+                                    raw - 1f
+                                )
+                            )
+                                .coerceIn(
+                                    1f,
+                                    1.12f
+                                )
                     }
+
+                    ccGestureLastY = y
+
+                    postInvalidateOnAnimation()
 
                     return true
                 }
 
+                // ----------------------------------------------------
                 // HOME PAGE SWIPE
+                // ----------------------------------------------------
 
-                if (abs(dx) > dp(12f)) {
+                if (
+                    abs(dx) >
+                    touchSlop
+                ) {
+
                     dragging = true
                 }
 
                 return true
             }
 
+            // ========================================================
+            // UP
+            // ========================================================
+
             MotionEvent.ACTION_UP -> {
 
-                val dx = x - downX
-                val dy = y - downY
+                ccVelocityTracker?.addMovement(
+                    event
+                )
+
+                ccVelocityTracker?.computeCurrentVelocity(
+                    1000
+                )
+
+                val velocityY =
+                    ccVelocityTracker
+                        ?.yVelocity
+                        ?: 0f
+
+                val dx =
+                    x -
+                    downX
+
+                val dy =
+                    y -
+                    downY
 
                 pressedScale = 1f
 
-                // CONTROL CENTER
+                // ----------------------------------------------------
+                // CONTROL CENTER OPEN
+                // ----------------------------------------------------
 
                 if (controlCenter) {
 
                     controlCenterGesture = false
 
-                    val closeDistance =
-                        controlCenterStartY - y
+                    val smallTap =
+                        abs(dx) <
+                        dp(14f) &&
+                        abs(dy) <
+                        dp(14f)
 
-                    // Свайп вверх закрывает.
+                    // Tap outside the visible panel closes it.
                     if (
-                        closeDistance > dp(55f)
+                        smallTap &&
+                        !isInsideControlCenterV17(
+                            x,
+                            y
+                        )
                     ) {
 
-                        closeControlCenter()
+                        settleControlCenterV17(
+                            opening = false,
+                            releaseVelocityPx =
+                                min(
+                                    -900f,
+                                    velocityY
+                                )
+                        )
+
+                        ccVelocityTracker?.recycle()
+                        ccVelocityTracker = null
 
                         return true
                     }
 
-                    // Более трети — открываем.
-                    if (
-                        controlCenterProgress >= 0.35f
-                    ) {
+                    val progress =
+                        controlCenterProgress
+                            .coerceIn(
+                                0f,
+                                1f
+                            )
 
-                        openControlCenter()
+                    val fastClose =
+                        velocityY <
+                        -850f
 
-                    } else {
+                    val shouldClose =
+                        fastClose ||
+                        progress <
+                        0.55f
 
-                        closeControlCenter()
-                    }
+                    settleControlCenterV17(
+                        opening = !shouldClose,
+                        releaseVelocityPx =
+                            velocityY
+                    )
+
+                    ccVelocityTracker?.recycle()
+                    ccVelocityTracker = null
 
                     return true
                 }
 
-                // IOS27_CONTROL_CENTER_GESTURE_V6
-                // Завершение интерактивного открытия.
+                // ----------------------------------------------------
+                // INTERACTIVE OPENING FINISH
+                // ----------------------------------------------------
 
                 if (
                     controlCenterGesture &&
-                    dy > dp(2f)
+                    dy >
+                    dp(2f)
                 ) {
 
+                    val progress =
+                        controlCenterProgress
+                            .coerceIn(
+                                0f,
+                                1f
+                            )
+
+                    val fastOpen =
+                        velocityY >
+                        850f
+
                     val shouldOpen =
-                        controlCenterProgress >= 0.25f ||
-                        dy >= dp(65f)
+                        fastOpen ||
+                        progress >=
+                        0.28f ||
+                        dy >=
+                        dp(70f)
 
                     controlCenterGesture = false
-
-                    // Заканчиваем интерактивный режим.
-                    // Дальше панель сама плавно доедет
-                    // до конечного состояния.
-
                     controlCenterInteractive = false
 
-                    if (shouldOpen) {
-                        openControlCenter()
-                    } else {
-                        closeControlCenter()
-                    }
+                    settleControlCenterV17(
+                        opening = shouldOpen,
+                        releaseVelocityPx =
+                            velocityY
+                    )
+
+                    ccVelocityTracker?.recycle()
+                    ccVelocityTracker = null
 
                     return true
                 }
 
                 controlCenterGesture = false
 
+                ccVelocityTracker?.recycle()
+                ccVelocityTracker = null
+
+                // ----------------------------------------------------
                 // HOME PAGE SWIPE
+                // ----------------------------------------------------
 
                 if (dragging) {
 
                     if (
-                        abs(dx) > dp(55f)
+                        abs(dx) >
+                        dp(55f)
                     ) {
 
                         if (dx < 0) {
@@ -3459,7 +4662,9 @@ class MainActivity : Activity() {
                     return true
                 }
 
+                // ----------------------------------------------------
                 // APP TAP
+                // ----------------------------------------------------
 
                 if (pressedIndex >= 0) {
 
@@ -3482,38 +4687,56 @@ class MainActivity : Activity() {
                 return true
             }
 
+            // ========================================================
+            // CANCEL
+            // ========================================================
+
             MotionEvent.ACTION_CANCEL -> {
+
+                ccVelocityTracker?.computeCurrentVelocity(
+                    1000
+                )
+
+                val velocityY =
+                    ccVelocityTracker
+                        ?.yVelocity
+                        ?: 0f
 
                 pressedIndex = -1
                 pressedScale = 1f
 
-                controlCenterGesture = false
-                controlCenterInteractive = false
+                val progress =
+                    controlCenterProgress
+                        .coerceIn(
+                            0f,
+                            1f
+                        )
 
                 if (
                     controlCenter ||
-                    controlCenterProgress > 0f
+                    progress > 0f
                 ) {
 
-                    // IOS27_CONTROL_CENTER_CANCEL_FIX_V15
-                    //
-                    // Android/Samsung может отправить CANCEL,
-                    // когда системный edge gesture начал
-                    // перехватывать касание.
-                    //
-                    // Если пользователь уже реально потянул
-                    // панель, не уничтожаем прогресс.
-                    if (
-                        controlCenterProgress >= 0.25f
-                    ) {
+                    val shouldOpen =
+                        progress >=
+                        0.28f ||
+                        velocityY >
+                        700f
 
-                        openControlCenter()
+                    settleControlCenterV17(
+                        opening = shouldOpen,
+                        releaseVelocityPx =
+                            velocityY
+                    )
 
-                    } else {
+                } else {
 
-                        closeControlCenter()
-                    }
+                    controlCenterGesture = false
+                    controlCenterInteractive = false
                 }
+
+                ccVelocityTracker?.recycle()
+                ccVelocityTracker = null
 
                 invalidate()
 
@@ -3522,6 +4745,75 @@ class MainActivity : Activity() {
         }
 
         return true
+    }
+
+    private fun isInsideControlCenterV17(
+        x: Float,
+        y: Float
+    ): Boolean {
+
+        val p =
+            controlCenterProgress
+                .coerceIn(
+                    0f,
+                    1f
+                )
+
+        val panelHeight =
+            controlCenterPanelHeightV17()
+
+        val top =
+            dp(10f)
+
+        val slide =
+            -panelHeight *
+            (
+                1f -
+                p
+            )
+
+        val scaleX =
+            0.94f +
+            0.06f *
+            p
+
+        val scaleY =
+            0.80f +
+            0.20f *
+            p
+
+        val left =
+            width / 2f +
+            (
+                dp(14f) -
+                width / 2f
+            ) *
+            scaleX
+
+        val right =
+            width / 2f +
+            (
+                width -
+                dp(14f) -
+                width / 2f
+            ) *
+            scaleX
+
+        val panelTop =
+            top +
+            slide
+
+        val panelBottom =
+            panelTop +
+            panelHeight *
+            scaleY
+
+        return (
+            x >= left &&
+            x <= right &&
+            y >= panelTop &&
+            y <= panelBottom
+        )
     }
 
         private fun animatePage(
@@ -3726,13 +5018,17 @@ class MainActivity : Activity() {
         }
 
         override fun onDetachedFromWindow() {
-            pageAnimator.cancel()
-            pressAnimator.cancel()
+
+            stopSystemIndicatorObserversV17()
+
             ccAnimator?.cancel()
             ccAnimator = null
 
             navigationBarAnimator?.cancel()
             navigationBarAnimator = null
+
+            ccVelocityTracker?.recycle()
+            ccVelocityTracker = null
 
             wallpaperGradient = null
             wallpaperGlow1 = null
